@@ -133,9 +133,17 @@ onMounted(() => {
   drawStart()
   drawRoute()
   emit('ready', map)
+
+  // Redraw correctly when the box changes size (drawers, tabs, collapsing panels).
+  resizeObserver = new ResizeObserver(() => map?.invalidateSize({ animate: false, pan: false }))
+  resizeObserver.observe(el.value)
 })
 
-onBeforeUnmount(() => map?.remove())
+let resizeObserver
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  map?.remove()
+})
 
 watch(() => [props.buildings, props.extraPoints], () => {
   applyBounds()

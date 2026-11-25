@@ -16,7 +16,8 @@ const routes = [
     component: () => import('./components/admin/AdminLayout.vue'),
     meta: { admin: true },
     children: [
-      { path: '', redirect: '/admin/buildings' },
+      { path: '', redirect: '/admin/overview' },
+      { path: 'overview', name: 'admin-overview', component: () => import('./views/admin/OverviewView.vue') },
       { path: 'buildings', name: 'admin-buildings', component: () => import('./views/admin/BuildingsView.vue') },
       { path: 'nodes', name: 'admin-nodes', component: () => import('./views/admin/NodesView.vue') },
       { path: 'events', name: 'admin-events', component: () => import('./views/admin/EventsView.vue') },

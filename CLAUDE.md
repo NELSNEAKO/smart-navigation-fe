@@ -47,6 +47,13 @@ vercel.json         /api rewrite to Render + SPA fallback
 - Admin "Use my current location" uses `navigator.geolocation`, plus a draggable pin to fine-tune.
 - Auth: JWT from `POST /api/auth/login` kept in the Pinia store and localStorage; a router guard sends `/admin/*` to `/admin/login` without a valid token. Visitors are anonymous; never add user accounts.
 
+## Admin UI
+- Follow `DESIGN.md`. Colours, font and other tokens live in `src/index.css` (`@theme`); use token classes (`bg-primary-600`, `text-ink-muted`, `border-line`), never raw hex.
+- Shared pieces in `src/components/ui/`: `AppIcon` (Lucide-style icons, no emoji), `UiButton`, `UiField`, `UiDrawer` (forms open in a drawer), `UiBadge`, `UiEmpty`, `PageHeader`, `UiFeedbackHost`.
+- Feedback via `src/lib/feedback.js`: `toast()` / `toast.error()` and `await confirmAction({ title, message })`. Never `alert`/`confirm`.
+- `src/lib/campusHealth.js` finds data problems (no entrance, unreachable, misplaced pin) for the Overview page and the building status badges.
+- Layout: sidebar on desktop (≥1024px), top bar + bottom tabs on phones.
+
 ## Conventions
 - Mobile-first UI (design for a 390px width first). Tailwind utility classes; avoid custom CSS files.
 - Keep components small. Put API calls in `src/lib/api.js`, not inside components.
