@@ -21,7 +21,9 @@ onMounted(() => props.autofocus && input.value?.focus())
     <input
       ref="input"
       v-model="model"
-      type="search"
+      type="text"
+      role="searchbox"
+      inputmode="search"
       enterkeyhint="search"
       autocomplete="off"
       :readonly="readonly"

@@ -51,7 +51,7 @@ const typeLabel = { classroom: 'Classroom', office: 'Office', restroom: 'Restroo
 
       <p class="mt-4 text-xs text-slate-500">Room locations are written by the campus admin. The app shows buildings only, not your position inside them.</p>
 
-      <RouterLink to="/" class="mt-6 block w-full rounded-xl bg-blue-700 py-3 text-center font-semibold text-white">Back to map</RouterLink>
+      <RouterLink to="/" class="mt-6 block w-full rounded-xl bg-blue-700 py-3 text-center font-semibold text-white">Back to home</RouterLink>
     </template>
   </main>
 </template>

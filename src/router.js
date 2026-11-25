@@ -1,10 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useMapStore } from './stores/map'
-import MapView from './views/MapView.vue'
+import HomeView from './views/HomeView.vue'
 
 const routes = [
-  { path: '/', name: 'map', component: MapView },
+  { path: '/', name: 'home', component: HomeView },
+  { path: '/map', name: 'map', component: () => import('./views/MapView.vue') },
+  { path: '/place/:buildingId', name: 'place', component: () => import('./views/PlaceView.vue') },
   { path: '/search', name: 'search', component: () => import('./views/SearchView.vue') },
   { path: '/route/:buildingId', name: 'route', component: () => import('./views/RouteView.vue') },
   { path: '/arrived/:buildingId', name: 'arrived', component: () => import('./views/ArrivedView.vue') },

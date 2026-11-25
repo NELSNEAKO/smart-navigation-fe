@@ -7,6 +7,7 @@ import MapCanvas from '../components/MapCanvas.vue'
 import SearchBar from '../components/SearchBar.vue'
 import BuildingCard from '../components/BuildingCard.vue'
 import StartStatus from '../components/StartStatus.vue'
+import AppIcon from '../components/ui/AppIcon.vue'
 
 const map = useMapStore()
 const router = useRouter()
@@ -19,7 +20,7 @@ const selectedDistance = computed(() => (selected.value && here.value ? distance
 const nextEvent = computed(() => map.events[0] ?? null)
 
 function goDirections(b) {
-  router.push({ name: 'route', params: { buildingId: b.id } })
+  router.push({ name: 'place', params: { buildingId: b.id } })
 }
 function goNavigate(b) {
   router.push({ name: 'route', params: { buildingId: b.id }, query: { go: '1' } })
@@ -44,8 +45,11 @@ function formatWhen(iso) {
 
     <!-- Top: search + start status -->
     <div class="pointer-events-none absolute inset-x-0 top-0 z-[1000] space-y-2 p-4 pt-[max(1rem,env(safe-area-inset-top))]">
-      <div class="pointer-events-auto">
-        <SearchBar readonly @activate="router.push({ name: 'search' })" />
+      <div class="pointer-events-auto flex items-center gap-2">
+        <RouterLink to="/" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-ink shadow-md ring-1 ring-line" aria-label="Home">
+          <AppIcon name="home" :size="20" />
+        </RouterLink>
+        <div class="min-w-0 flex-1"><SearchBar readonly @activate="router.push({ name: 'home' })" /></div>
       </div>
       <div class="pointer-events-auto">
         <StartStatus />

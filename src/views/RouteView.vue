@@ -196,7 +196,7 @@ onBeforeUnmount(stopNavigation)
 
       <template v-else-if="!building">
         <p class="font-medium">Building not found.</p>
-        <RouterLink to="/" class="mt-2 inline-block font-semibold text-blue-700">Back to map</RouterLink>
+        <RouterLink to="/" class="mt-2 inline-block font-semibold text-blue-700">Back to home</RouterLink>
       </template>
 
       <!-- ===== Navigating ===== -->

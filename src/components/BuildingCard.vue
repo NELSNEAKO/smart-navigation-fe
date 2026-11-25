@@ -33,7 +33,7 @@ const roomCount = computed(() => (props.building.floors ?? []).reduce((n, f) => 
         Start navigation
       </button>
       <button type="button" class="mt-2 w-full py-2 text-sm font-semibold text-blue-700" @click="$emit('directions', building)">
-        See route first
+        Details &amp; route
       </button>
     </div>
   </article>

@@ -50,6 +50,8 @@ export const getMap = () => request('/map')
 export const getHealth = () =>
   fetch(`${API_BASE}/health?db=1`).then(async (r) => ({ httpStatus: r.status, ...(await r.json().catch(() => ({}))) }))
 export const getEvents = () => request('/events')
+/** Most searched buildings: [{ buildingId, count }]. Empty list if unavailable. */
+export const getPopular = () => request('/popular').catch(() => [])
 export const login = (email, password) => request('/auth/login', { method: 'POST', body: { email, password } })
 
 /** Fire-and-forget usage log; never blocks or breaks navigation. */

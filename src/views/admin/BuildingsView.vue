@@ -12,6 +12,9 @@ import UiBadge from '../../components/ui/UiBadge.vue'
 import UiDrawer from '../../components/ui/UiDrawer.vue'
 import UiEmpty from '../../components/ui/UiEmpty.vue'
 import UiField from '../../components/ui/UiField.vue'
+import { CATEGORIES, categoryById } from '../../lib/categories'
+
+const categoryOptions = [{ value: '', label: 'No category' }, ...CATEGORIES.map((c) => ({ value: c.id, label: c.label }))]
 import LocationPicker from '../../components/admin/LocationPicker.vue'
 import FloorsEditor from '../../components/admin/FloorsEditor.vue'
 
@@ -27,7 +30,7 @@ const errors = ref({})
 const saving = ref(false)
 
 function blank() {
-  return { name: '', description: '', photoUrl: '', location: null }
+  return { name: '', description: '', category: '', photoUrl: '', location: null }
 }
 
 const health = computed(() => campusHealth(campus))
@@ -56,7 +59,7 @@ function openNew() {
 function openEdit(b, startTab = 'details') {
   editingId.value = b.id
   tab.value = startTab
-  form.value = { name: b.name, description: b.description || '', photoUrl: b.photoUrl || '', location: { lat: b.lat, lng: b.lng } }
+  form.value = { name: b.name, description: b.description || '', category: b.category || '', photoUrl: b.photoUrl || '', location: { lat: b.lat, lng: b.lng } }
   errors.value = {}
 }
 
@@ -91,6 +94,7 @@ async function save() {
     name: form.value.name,
     description: form.value.description,
     photoUrl: form.value.photoUrl,
+    category: form.value.category || null,
     lat: form.value.location.lat,
     lng: form.value.location.lng,
   }
@@ -170,6 +174,7 @@ async function remove(b) {
           <thead class="text-xs font-medium tracking-wide text-ink-muted uppercase">
             <tr class="border-b border-line">
               <th class="px-4 py-3 font-medium">Building</th>
+              <th class="px-4 py-3 font-medium">Category</th>
               <th class="px-4 py-3 font-medium">Floors</th>
               <th class="px-4 py-3 font-medium">Rooms</th>
               <th class="px-4 py-3 font-medium">Entrances</th>
@@ -188,6 +193,12 @@ async function remove(b) {
                     <p v-if="b.description" class="max-w-xs truncate text-xs text-ink-muted">{{ b.description }}</p>
                   </div>
                 </div>
+              </td>
+              <td class="px-4 py-3">
+                <span v-if="categoryById[b.category]" class="inline-flex items-center gap-1.5 text-ink-soft">
+                  <AppIcon :name="categoryById[b.category].icon" :size="16" class="text-ink-muted" />{{ categoryById[b.category].label }}
+                </span>
+                <span v-else class="text-ink-muted">Not set</span>
               </td>
               <td class="px-4 py-3 tabular-nums text-ink-soft">{{ health.perBuilding.get(b.id)?.floors ?? 0 }}</td>
               <td class="px-4 py-3 tabular-nums text-ink-soft">{{ health.perBuilding.get(b.id)?.rooms ?? 0 }}</td>
@@ -248,6 +259,7 @@ async function remove(b) {
       <form v-show="tab === 'details' || !current" id="building-form" class="space-y-5" novalidate @submit.prevent="save">
         <UiField v-model="form.name" label="Building name" required maxlength="120" placeholder="e.g. Science Building" :error="errors.name" />
         <UiField v-model="form.description" as="textarea" label="Description" rows="2" maxlength="2000" placeholder="What's inside, which offices are here…" hint="Shown to visitors when they tap the building." />
+        <UiField v-model="form.category" as="select" label="Category" :options="categoryOptions" hint="Visitors can browse buildings by category on the home screen." />
         <UiField v-model="form.photoUrl" type="url" label="Photo link" placeholder="https://…" hint="Optional. A photo helps visitors recognise the building." :error="errors.photoUrl" />
         <div>
           <p class="mb-1.5 text-sm font-medium text-ink-soft">Location <span class="text-danger-600">*</span></p>

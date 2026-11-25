@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import * as api from '../lib/api'
 import { buildGraph, shortestPath } from '../lib/dijkstra'
 import { compass, distanceBetween, nearest } from '../lib/geo'
+import { categoryById } from '../lib/categories'
 
 const FROM_KEY = 'campusnav.from'
 // A GPS fix farther than this from every walkway point is treated as "not on campus".
@@ -237,7 +238,8 @@ export const useMapStore = defineStore('map', () => {
         buildingId: b.id,
         title: b.name,
         subtitle: b.description || '',
-        haystack: `${b.name} ${b.description || ''}`.toLowerCase(),
+        category: b.category || null,
+        haystack: `${b.name} ${b.description || ''} ${categoryById[b.category]?.label || ''} ${categoryById[b.category]?.plural || ''}`.toLowerCase(),
       })
       for (const f of b.floors ?? []) {
         for (const r of f.rooms ?? []) {

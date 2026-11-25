@@ -39,6 +39,12 @@ vercel.json         /api rewrite to Render + SPA fallback
 - `npm run dev:live`: Vite dev server against the Render backend
 - `npm run build` / `npm run preview` / `npm run preview:live`
 
+## Visitor screens
+- `/` **HomeView**: "Where do you want to go?" search (inline results), Browse by category (only categories that have buildings), Popular places (`GET /api/popular`, falls back to all buildings), events, link to the map.
+- `/place/:buildingId` **PlaceView**: destination card (category, description, searched room highlighted, walk time/distance, floors and rooms) with **Start navigation** (→ `/route/:id?go=1`).
+- `/map` **MapView**: the full campus map (secondary). `/route/:id` live navigation, `/arrived/:id`.
+- Categories: `src/lib/categories.js` (ids match the backend list); search also matches category names.
+
 ## Key behaviour
 - The client loads `GET /api/map` once. Search (text match), nearest building and Dijkstra all run in the browser.
 - Map: Leaflet + OpenStreetMap tiles, locked to the campus (`maxBounds` from the data, limited zoom). Plan to use a campus image overlay later.
