@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as api from '../lib/api'
 import { buildGraph, shortestPath } from '../lib/dijkstra'
-import { distanceBetween, nearest } from '../lib/geo'
+import { compass, distanceBetween, nearest } from '../lib/geo'
 
 const FROM_KEY = 'campusnav.from'
 // A GPS fix farther than this from every walkway point is treated as "not on campus".
@@ -48,14 +48,27 @@ export const useMapStore = defineStore('map', () => {
   const buildingById = computed(() => new Map(buildings.value.map((b) => [b.id, b])))
   const graph = computed(() => buildGraph(edges.value))
 
-  // ---- Start location: QR code (?from=gate1) wins over GPS ----
+  // ---- Start location: QR code (?from=gate1) > point tapped on the map > GPS ----
   const fromCode = ref(readFrom())
+  const manualStart = ref(null) // { lat, lng } chosen by tapping the map (handy for testing off campus)
   const gps = ref(null) // { lat, lng, accuracy }
   const gpsError = ref(null)
   let watchId = null
 
+  function setManualStart(point) {
+    manualStart.value = point ? { lat: point.lat, lng: point.lng } : null
+    if (point) setFromCode(null)
+  }
+
+  /** Navigation: follow the live GPS instead of a QR or tapped start point. */
+  function useLiveGps() {
+    manualStart.value = null
+    setFromCode(null)
+  }
+
   function setFromCode(code) {
     fromCode.value = code || null
+    if (code) manualStart.value = null
     try {
       if (code) sessionStorage.setItem(FROM_KEY, code)
       else sessionStorage.removeItem(FROM_KEY)
@@ -84,30 +97,34 @@ export const useMapStore = defineStore('map', () => {
 
   const qrNode = computed(() => (fromCode.value ? nodes.value.find((n) => n.code === fromCode.value) ?? null : null))
 
-  /** { node, source: 'qr' | 'gps', label } or null. */
+  /**
+   * Where routes start: { point, node, source: 'qr' | 'manual' | 'gps', label } or null.
+   * node is the walkway point the start snaps to (null when no path point is close enough).
+   */
   const start = computed(() => {
     if (qrNode.value) {
-      return { node: qrNode.value, source: 'qr', label: qrNode.value.label || qrNode.value.code }
+      return { point: qrNode.value, node: qrNode.value, source: 'qr', label: qrNode.value.label || qrNode.value.code }
     }
-    if (gps.value && nodes.value.length) {
-      const hit = nearest(nodes.value, gps.value)
-      if (hit && hit.distance <= MAX_SNAP_M) return { node: hit.item, source: 'gps', label: 'Your location' }
+    const origin = manualStart.value ?? gps.value
+    if (!origin) return null
+    const hit = nodes.value.length ? nearest(nodes.value, origin) : null
+    return {
+      point: origin,
+      node: hit && hit.distance <= MAX_SNAP_M ? hit.item : null,
+      source: manualStart.value ? 'manual' : 'gps',
+      label: manualStart.value ? 'the point you chose' : 'your location',
     }
-    return null
-  })
-
-  const offCampus = computed(() => {
-    if (qrNode.value || !gps.value || !nodes.value.length) return false
-    const hit = nearest(nodes.value, gps.value)
-    return !hit || hit.distance > MAX_SNAP_M
   })
 
   /** Building the visitor is closest to. Building level only, never indoors. */
   const nearestBuilding = computed(() => {
-    const point = qrNode.value ?? gps.value
+    const point = start.value?.point
     if (!point || !buildings.value.length) return null
     return nearest(buildings.value, point)
   })
+
+  // More than 1 km from every building: probably not on campus.
+  const offCampus = computed(() => !!nearestBuilding.value && nearestBuilding.value.distance > 1000)
 
   // ---- Destinations ----
   function entrancesOf(buildingId) {
@@ -120,45 +137,78 @@ export const useMapStore = defineStore('map', () => {
   }
 
   /**
-   * Shortest walking route to a building (to whichever entrance is closest by path).
-   * Returns { points, steps, distance, entrance } or { error }.
-   * error === 'no-start' means there is no QR code or usable GPS yet.
+   * Walking route to a building.
+   * 1. Shortest path along the admin's walkway paths (Dijkstra), when the start and the
+   *    building are both connected to them.
+   * 2. Otherwise a direct straight line, flagged with `direct: true` and a `reason`,
+   *    so navigation can be tested before the paths are mapped.
+   * Returns { points, steps, distance, target, direct, reason } or { error }.
+   * error === 'no-start' means there is no QR code, tapped point or GPS fix yet.
    */
   function routeTo(buildingId) {
     const building = buildingById.value.get(buildingId)
     if (!building) return { error: 'Building not found.' }
-    if (!start.value) return { error: 'no-start' }
+    const from = start.value
+    if (!from) return { error: 'no-start' }
 
     const entrances = entrancesOf(buildingId)
-    if (!entrances.length) return { error: 'This building is not connected to the walkway map yet.' }
+    if (from.node && entrances.length) {
+      const result = shortestPath(graph.value, from.node.id, entrances.map((n) => n.id))
+      if (result) return pathRoute(result, building, from)
+    }
 
-    const result = shortestPath(graph.value, start.value.node.id, entrances.map((n) => n.id))
-    if (!result) return { error: 'No walking path found. The admin may still be mapping this area.' }
+    let reason = 'No walkway path reaches this building yet.'
+    if (!edges.value.length) reason = 'Walkway paths are not mapped yet.'
+    else if (!from.node) reason = 'Your start point is not near any mapped walkway.'
+    return directRoute(building, entrances, from, reason)
+  }
 
+  function pathRoute(result, building, from) {
     const pathNodes = result.path.map((id) => nodeById.value.get(id))
     const points = pathNodes.map((n) => ({ lat: n.lat, lng: n.lng }))
     let distance = result.distance
 
-    // From GPS, also draw (and count) the short walk to the first walkway point.
-    if (start.value.source === 'gps' && gps.value) {
-      const lead = distanceBetween(gps.value, pathNodes[0])
+    // From GPS or a tapped point, also draw (and count) the walk to the first walkway point.
+    if (from.source !== 'qr') {
+      const lead = distanceBetween(from.point, pathNodes[0])
       if (lead > 3) {
-        points.unshift({ lat: gps.value.lat, lng: gps.value.lng })
+        points.unshift({ lat: from.point.lat, lng: from.point.lng })
         distance += lead
       }
     }
 
+    const target = pathNodes[pathNodes.length - 1]
+    return { points, distance, target, direct: false, steps: buildSteps(pathNodes, building, from) }
+  }
+
+  function directRoute(building, entrances, from, reason) {
+    // Head for the closest entrance if any are marked, otherwise the building's pin.
+    const target = entrances.length ? nearest(entrances, from.point).item : building
+    const distance = distanceBetween(from.point, target)
     return {
-      points,
+      points: [
+        { lat: from.point.lat, lng: from.point.lng },
+        { lat: target.lat, lng: target.lng },
+      ],
       distance,
-      entrance: pathNodes[pathNodes.length - 1],
-      steps: buildSteps(pathNodes, building, start.value),
+      target,
+      direct: true,
+      reason,
+      steps: [
+        { text: startText(from), distance: null },
+        { text: `Head toward ${building.name} (${compass(from.point, target)})`, distance },
+        { text: `Arrive at ${building.name}`, distance: null },
+      ],
     }
+  }
+
+  function startText(from) {
+    return from.source === 'qr' ? `Start at ${from.label}` : `Start from ${from.label}`
   }
 
   // Unlabelled walkway points are merged; labelled ones ("Canteen", "Gate 1") become steps.
   function buildSteps(pathNodes, building, from) {
-    const steps = [{ text: from.source === 'qr' ? `Start at ${from.label}` : 'Start from your location', distance: null }]
+    const steps = [{ text: startText(from), distance: null }]
     if (pathNodes.length === 1) {
       steps.push({ text: `You are at ${building.name}`, distance: 0 })
       return steps
@@ -234,7 +284,8 @@ export const useMapStore = defineStore('map', () => {
   return {
     buildings, nodes, edges, events, status, error, load,
     nodeById, buildingById,
-    fromCode, setFromCode, gps, gpsError, startGps, start, offCampus, nearestBuilding,
+    fromCode, setFromCode, manualStart, setManualStart, useLiveGps,
+    gps, gpsError, startGps, start, offCampus, nearestBuilding,
     entrancesOf, routeTo, search, findRoom,
   }
 })

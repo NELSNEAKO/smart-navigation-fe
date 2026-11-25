@@ -5,7 +5,7 @@ const props = defineProps({
   building: { type: Object, required: true },
   distance: { type: Number, default: null }, // metres from the visitor, if known
 })
-defineEmits(['directions', 'close'])
+defineEmits(['navigate', 'directions', 'close'])
 
 const roomCount = computed(() => (props.building.floors ?? []).reduce((n, f) => n + (f.rooms?.length ?? 0), 0))
 </script>
@@ -28,9 +28,12 @@ const roomCount = computed(() => (props.building.floors ?? []).reduce((n, f) => 
       <button
         type="button"
         class="mt-4 w-full rounded-xl bg-blue-700 py-3 font-semibold text-white active:bg-blue-800"
-        @click="$emit('directions', building)"
+        @click="$emit('navigate', building)"
       >
-        Directions
+        Start navigation
+      </button>
+      <button type="button" class="mt-2 w-full py-2 text-sm font-semibold text-blue-700" @click="$emit('directions', building)">
+        See route first
       </button>
     </div>
   </article>

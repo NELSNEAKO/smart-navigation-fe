@@ -27,6 +27,20 @@ export function nearest(items, point) {
   return best ? { item: best, distance: bestD } : null
 }
 
+/** Initial bearing in degrees (0 = north, 90 = east) from a to b. */
+export function bearing(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180
+  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat))
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng))
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
+}
+
+const DIRECTIONS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest']
+/** "northeast" etc. from a to b. */
+export function compass(a, b) {
+  return DIRECTIONS[Math.round(bearing(a, b) / 45) % 8]
+}
+
 export function formatDistance(m) {
   if (m == null) return ''
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`

@@ -14,12 +14,15 @@ const selected = ref(null)
 
 onMounted(() => map.startGps())
 
-const here = computed(() => map.start?.node ?? map.gps)
+const here = computed(() => map.start?.point ?? null)
 const selectedDistance = computed(() => (selected.value && here.value ? distanceBetween(here.value, selected.value) : null))
 const nextEvent = computed(() => map.events[0] ?? null)
 
 function goDirections(b) {
   router.push({ name: 'route', params: { buildingId: b.id } })
+}
+function goNavigate(b) {
+  router.push({ name: 'route', params: { buildingId: b.id }, query: { go: '1' } })
 }
 
 function formatWhen(iso) {
@@ -33,7 +36,7 @@ function formatWhen(iso) {
       :buildings="map.buildings"
       :extra-points="map.nodes"
       :user-pos="map.gps"
-      :start-point="map.start?.source === 'qr' ? map.start.node : null"
+      :start-point="map.start && map.start.source !== 'gps' ? map.start.point : null"
       :highlight-id="selected?.id"
       @building-click="selected = $event"
       @map-click="selected = null"
@@ -64,6 +67,7 @@ function formatWhen(iso) {
         v-if="selected"
         :building="selected"
         :distance="selectedDistance"
+        @navigate="goNavigate"
         @directions="goDirections"
         @close="selected = null"
       />

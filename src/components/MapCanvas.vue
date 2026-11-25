@@ -4,6 +4,7 @@
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import L from 'leaflet'
 import { FALLBACK_CENTER, FALLBACK_ZOOM, BOUNDS_PADDING_DEG, TILE_URL, TILE_ATTRIBUTION } from '../lib/campus'
+import { distanceBetween } from '../lib/geo'
 
 const props = defineProps({
   buildings: { type: Array, default: () => [] },
@@ -14,6 +15,8 @@ const props = defineProps({
   route: { type: Array, default: () => [] }, // [{ lat, lng }]
   highlightId: { type: String, default: null },
   lockToCampus: { type: Boolean, default: true },
+  // Navigation mode: keep the map centred on userPos as it moves.
+  follow: { type: Boolean, default: false },
 })
 const emit = defineEmits(['ready', 'building-click', 'map-click'])
 
@@ -21,9 +24,20 @@ const el = ref(null)
 let map
 const layers = { buildings: null, user: null, start: null, route: null }
 
+// Points farther than this from the middle of the data (e.g. a building saved in the
+// wrong city by mistake) are left out, so one bad pin can't zoom the map out to sea.
+const OUTLIER_M = 2000
+const median = (xs) => {
+  const s = [...xs].sort((a, b) => a - b)
+  return s[Math.floor(s.length / 2)]
+}
+
 function campusBounds() {
-  const pts = [...props.buildings, ...props.extraPoints].filter((p) => p && Number.isFinite(p.lat))
+  let pts = [...props.buildings, ...props.extraPoints].filter((p) => p && Number.isFinite(p.lat))
   if (!pts.length) return null
+  const mid = { lat: median(pts.map((p) => p.lat)), lng: median(pts.map((p) => p.lng)) }
+  const near = pts.filter((p) => distanceBetween(p, mid) <= OUTLIER_M)
+  if (near.length) pts = near
   const lats = pts.map((p) => p.lat)
   const lngs = pts.map((p) => p.lng)
   const pad = BOUNDS_PADDING_DEG
@@ -128,7 +142,19 @@ watch(() => [props.buildings, props.extraPoints], () => {
   drawBuildings()
 })
 watch(() => props.highlightId, drawBuildings)
-watch(() => props.userPos, drawUser)
+watch(
+  () => props.userPos,
+  (p) => {
+    drawUser()
+    if (props.follow && p) map.panTo([p.lat, p.lng], { animate: true })
+  },
+)
+watch(
+  () => props.follow,
+  (on) => {
+    if (on && props.userPos) map.setView([props.userPos.lat, props.userPos.lng], Math.max(map.getZoom(), 19))
+  },
+)
 watch(() => props.startPoint, drawStart)
 watch(() => props.route, drawRoute)
 
