@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:live": "vite --mode live",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:live": "vite build && vite preview --mode live"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

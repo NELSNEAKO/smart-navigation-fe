@@ -8,6 +8,7 @@ const routes = [
   { path: '/search', name: 'search', component: () => import('./views/SearchView.vue') },
   { path: '/route/:buildingId', name: 'route', component: () => import('./views/RouteView.vue') },
   { path: '/arrived/:buildingId', name: 'arrived', component: () => import('./views/ArrivedView.vue') },
+  { path: '/status', name: 'status', component: () => import('./views/StatusView.vue') },
 
   { path: '/admin/login', name: 'admin-login', component: () => import('./views/admin/LoginView.vue') },
   {

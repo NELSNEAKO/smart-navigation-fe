@@ -1,5 +1,9 @@
 // All HTTP calls live here. Components and stores call these functions, never fetch() directly.
 
+// '' = same site: Vite's proxy locally, Vercel's rewrite in production.
+// Set VITE_API_URL only to call a backend on another domain directly (needs CORS_ORIGIN there).
+export const API_BASE = `${(import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')}/api`
+
 let token = null
 let onUnauthorized = () => {}
 
@@ -24,7 +28,7 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   let res
   try {
-    res = await fetch(`/api${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    res = await fetch(`${API_BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
   } catch {
     throw new ApiError(0, 'You appear to be offline.')
   }
@@ -40,6 +44,9 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
 // ---- Public ----
 export const getMap = () => request('/map')
+/** Backend + database status, used by the /status page. */
+export const getHealth = () =>
+  fetch(`${API_BASE}/health?db=1`).then(async (r) => ({ httpStatus: r.status, ...(await r.json().catch(() => ({}))) }))
 export const getEvents = () => request('/events')
 export const login = (email, password) => request('/auth/login', { method: 'POST', body: { email, password } })
 
