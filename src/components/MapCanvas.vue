@@ -52,6 +52,10 @@ function applyBounds() {
     map.setMaxBounds(bounds)
     map.options.maxBoundsViscosity = 1
   }
+  // A map with no size yet (styles still loading, hidden tab) would "fit" at max zoom.
+  // Wait: the ResizeObserver calls applyBounds again once the box has a real size.
+  const size = map.getSize()
+  if (!lockedOnce && (size.x < 50 || size.y < 50)) return
   if (!lockedOnce) {
     // Compute the campus zoom directly; getZoom() is stale while an animation runs.
     const campusZoom = map.getBoundsZoom(bounds, false, L.point(16, 16))
@@ -135,7 +139,11 @@ onMounted(() => {
   emit('ready', map)
 
   // Redraw correctly when the box changes size (drawers, tabs, collapsing panels).
-  resizeObserver = new ResizeObserver(() => map?.invalidateSize({ animate: false, pan: false }))
+  resizeObserver = new ResizeObserver(() => {
+    if (!map) return
+    map.invalidateSize({ animate: false, pan: false })
+    if (!lockedOnce) applyBounds() // first real size: fit the campus now
+  })
   resizeObserver.observe(el.value)
 })
 

@@ -53,6 +53,7 @@ vercel.json         /api rewrite to Render + SPA fallback
 - Feedback via `src/lib/feedback.js`: `toast()` / `toast.error()` and `await confirmAction({ title, message })`. Never `alert`/`confirm`.
 - `src/lib/campusHealth.js` finds data problems (no entrance, unreachable, misplaced pin) for the Overview page and the building status badges.
 - Layout: sidebar on desktop (≥1024px), top bar + bottom tabs on phones.
+- Paths editor (`views/admin/NodesView.vue`): Select / Point / Draw / Connect modes, **Record walk** (GPS track → `simplify` + `enforceSpacing` + `snapToNetwork` in `lib/pathTools.js` → one `POST /api/paths`), averaged **Add point here** (`sampleGps` in `lib/gps.js`), auto-join to points within 6 m / 14 px, and an in-memory **Undo** (Ctrl+Z). In dev, `window.__pathsDebug.feed(lat, lng, accuracy)` feeds fake GPS readings to the recorder.
 
 ## Conventions
 - Mobile-first UI (design for a 390px width first). Tailwind utility classes; avoid custom CSS files.

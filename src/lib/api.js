@@ -28,7 +28,9 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
   let res
   try {
-    res = await fetch(`${API_BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) })
+    // no-cache: always ask the server (it may answer 304). Without it the browser can serve a
+    // stale copy, so admin edits showed up one change late. Offline use is the service worker's job.
+    res = await fetch(`${API_BASE}${path}`, { method, headers, cache: 'no-cache', body: body === undefined ? undefined : JSON.stringify(body) })
   } catch {
     throw new ApiError(0, 'You appear to be offline.')
   }
@@ -63,4 +65,8 @@ export const admin = {
   update: (resource, id, data) => request(`/${resource}/${id}`, { method: 'PUT', body: data, auth: true }),
   remove: (resource, id) => request(`/${resource}/${id}`, { method: 'DELETE', auth: true }),
   reports: (days = 30) => request(`/reports?days=${days}`, { auth: true }),
+  /** Save a whole walkway: points in order, each { id } (existing) or { lat, lng, label? }. */
+  createPath: (points) => request('/paths', { method: 'POST', body: { points }, auth: true }),
+  /** Undo: delete these paths and points in one request. */
+  deletePath: ({ nodeIds = [], edgeIds = [] }) => request('/paths/delete', { method: 'POST', body: { nodeIds, edgeIds }, auth: true }),
 }
