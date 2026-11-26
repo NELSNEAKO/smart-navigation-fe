@@ -1,11 +1,14 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useMapStore, arrivalRadius, ARRIVE_ARM_M, ARRIVE_CONFIRM_READINGS, ARRIVE_MAX_ACCURACY_M } from '../stores/map'
-import { distanceBetween, formatDistance, walkingMinutes } from '../lib/geo'
+import { useMapStore } from '../stores/map'
+import { formatDistance, walkingMinutes } from '../lib/geo'
+import { askCompassPermission } from '../composables/useHeading'
 import MapCanvas from '../components/MapCanvas.vue'
 import RouteSteps from '../components/RouteSteps.vue'
 import StartStatus from '../components/StartStatus.vue'
+// Loaded only when navigation starts (MapLibre is large).
+const LiveNavigation = defineAsyncComponent(() => import('../components/nav/LiveNavigation.vue'))
 
 const map = useMapStore()
 const route = useRoute()
@@ -26,175 +29,33 @@ const namedPoints = computed(() => map.nodes.filter((n) => n.code).sort((a, b) =
 const picking = ref(false)
 const needsStart = computed(() => result.value?.error === 'no-start')
 function onMapClick(p) {
-  if (navigating.value) return
   if (picking.value || needsStart.value) {
     map.setManualStart(p)
     picking.value = false
   }
 }
 
-// ---- Navigation mode ----
+// ---- Live navigation (full screen, components/nav/LiveNavigation.vue) ----
 const navigating = ref(false)
-const simPos = ref(null)
-let simTimer = null
-let wakeLock = null
-
-// Live GPS counts only when it is near campus; otherwise (testing at home) use the simulation.
 const liveGps = computed(() => (map.gps && !map.offCampus ? map.gps : null))
-const currentPos = computed(() => simPos.value ?? (navigating.value ? liveGps.value : null))
 
-// Arrival state for this navigation session.
-const startPos = ref(null) // first good position after navigation started
-const armed = ref(false) // visitor has walked away from the start, so auto-arrival is allowed
-const alreadyHere = ref(false) // navigation started within the arrival radius
-let insideCount = 0 // consecutive good readings inside the radius
-
-function resetArrival() {
-  startPos.value = null
-  armed.value = false
-  alreadyHere.value = false
-  insideCount = 0
-}
-
-// Accuracy of the position in use: the simulation is exact.
-const posAccuracy = computed(() => (simPos.value ? 0 : (currentPos.value?.accuracy ?? null)))
-const gpsWeak = computed(() => posAccuracy.value != null && posAccuracy.value > ARRIVE_MAX_ACCURACY_M)
-
-async function startNavigation() {
+function startNavigation() {
   if (!ok.value) return
+  askCompassPermission() // iPhone: must be asked inside this tap
   if (liveGps.value && map.start?.source !== 'gps') map.useLiveGps() // follow the phone, not the old start
-  resetArrival()
   navigating.value = true
-  try {
-    wakeLock = await navigator.wakeLock?.request('screen') // keep the screen on while walking
-  } catch {
-    /* not supported or denied: fine */
-  }
 }
-
 function stopNavigation() {
   navigating.value = false
-  resetArrival()
-  stopSim()
-  wakeLock?.release?.().catch(() => {})
-  wakeLock = null
 }
 
-// Remaining distance along the route line from a position.
-function remainingAlong(points, pos) {
-  let k = 0
-  let best = Infinity
-  points.forEach((p, i) => {
-    const d = distanceBetween(p, pos)
-    if (d < best) {
-      best = d
-      k = i
-    }
-  })
-  // If we're past vertex k (closer to the next one's segment), measure to k+1.
-  const nextIdx = k < points.length - 1 && distanceBetween(pos, points[k + 1]) < distanceBetween(points[k], points[k + 1]) ? k + 1 : k
-  let rest = distanceBetween(pos, points[nextIdx])
-  for (let i = nextIdx; i < points.length - 1; i++) rest += distanceBetween(points[i], points[i + 1])
-  return rest
-}
-
-const remaining = computed(() => {
-  if (!ok.value) return null
-  if (!currentPos.value) return result.value.distance
-  return remainingAlong(result.value.points, currentPos.value)
-})
-
-// The next instruction: first step whose position along the route is still ahead.
-const nextStep = computed(() => {
-  if (!ok.value) return null
-  const steps = result.value.steps
-  const travelled = result.value.distance - (remaining.value ?? result.value.distance)
-  let along = 0
-  for (let i = 1; i < steps.length; i++) {
-    along += steps[i].distance || 0
-    if (along > travelled + 5) return { ...steps[i], inMeters: along - travelled }
-  }
-  return steps[steps.length - 1]
-})
-
-// ---- Simulated walk (testing and demos without being on campus) ----
-function startSim() {
-  if (!ok.value) return
-  const pts = result.value.points
-  let seg = 0
-  let t = 0
-  resetArrival() // the simulated walk starts its own session from the route start
-  simPos.value = { ...pts[0] }
-  const stepM = 6 // metres per tick (~4x walking speed at 2 ticks/s)
-  simTimer = setInterval(() => {
-    if (seg >= pts.length - 1) return stopSim(true)
-    const a = pts[seg]
-    const b = pts[seg + 1]
-    const len = Math.max(distanceBetween(a, b), 0.01)
-    t += stepM / len
-    while (t >= 1 && seg < pts.length - 1) {
-      t -= 1
-      seg++
-    }
-    if (seg >= pts.length - 1) {
-      simPos.value = { ...pts[pts.length - 1] }
-      return
-    }
-    const p = pts[seg]
-    const q = pts[seg + 1]
-    simPos.value = { lat: p.lat + (q.lat - p.lat) * t, lng: p.lng + (q.lng - p.lng) * t }
-  }, 500)
-}
-function stopSim(keepPos = false) {
-  clearInterval(simTimer)
-  simTimer = null
-  if (!keepPos) simPos.value = null
-}
-
-// ---- Arrival ----
 const arrivedQuery = computed(() => (route.query.room ? { room: route.query.room } : {}))
 function arrive() {
-  stopNavigation()
+  navigating.value = false
   router.replace({ name: 'arrived', params: { buildingId: buildingId.value }, query: arrivedQuery.value })
 }
-// Arrive only when it's really true:
-//  - ignore weak readings (worse than ±20 m),
-//  - radius 6–12 m depending on the reading's accuracy,
-//  - only after the visitor has walked away from where they started ("armed"),
-//  - and only after 2 consecutive good readings inside the radius.
-watch(currentPos, (pos) => {
-  if (!pos || !navigating.value || !ok.value) return
-  const acc = posAccuracy.value ?? 0
-  if (acc > ARRIVE_MAX_ACCURACY_M) {
-    insideCount = 0
-    return
-  }
-  const target = result.value.target
-  const d = distanceBetween(pos, target)
-  const radius = arrivalRadius(acc)
 
-  if (!startPos.value) {
-    startPos.value = { lat: pos.lat, lng: pos.lng }
-    if (d <= radius) alreadyHere.value = true
-    return
-  }
-  if (!armed.value && (distanceBetween(pos, startPos.value) >= ARRIVE_ARM_M || d > radius + ARRIVE_ARM_M)) {
-    armed.value = true
-    alreadyHere.value = false
-  }
-  if (!armed.value) return
-
-  insideCount = d <= radius ? insideCount + 1 : 0
-  if (insideCount >= ARRIVE_CONFIRM_READINGS) arrive()
-})
-
-// Dev-only: feed fake GPS readings to test arrival without walking.
-// window.__navDebug.gps(lat, lng, accuracyMetres)
-if (import.meta.env.DEV) {
-  window.__navDebug = { gps: (lat, lng, accuracy = 5) => (map.gps = { lat, lng, accuracy }) }
-}
-
-// "Start navigation" on the building card opens this page with ?go=1.
+// "Start navigation" on the destination page opens this page with ?go=1.
 watch(
   ok,
   (isOk) => {
@@ -202,25 +63,21 @@ watch(
   },
   { immediate: true },
 )
-
-onBeforeUnmount(stopNavigation)
 </script>
 
 <template>
   <main class="flex h-dvh flex-col">
-    <div class="relative shrink-0 transition-all" :class="navigating ? 'h-[62dvh]' : 'h-[45dvh]'">
+    <div class="relative h-[45dvh] shrink-0">
       <MapCanvas
         :buildings="map.buildings"
         :extra-points="map.nodes"
-        :user-pos="currentPos ?? map.gps"
+        :user-pos="map.gps"
         :start-point="map.start && map.start.source !== 'gps' ? map.start.point : null"
         :route="ok ? result.points : []"
         :highlight-id="buildingId"
-        :follow="navigating && !!currentPos"
         @map-click="onMapClick"
       />
       <button
-        v-if="!navigating"
         type="button"
         class="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] z-[1000] flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl shadow-md"
         aria-label="Back"
@@ -228,13 +85,6 @@ onBeforeUnmount(stopNavigation)
       >
         ←
       </button>
-
-      <!-- Navigation banner -->
-      <div v-if="navigating && ok" class="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[1000] rounded-2xl bg-blue-700 p-4 text-white shadow-lg">
-        <p class="text-xs font-semibold uppercase tracking-wide text-blue-200">Next</p>
-        <p class="text-lg font-semibold leading-tight">{{ nextStep?.text }}</p>
-        <p v-if="nextStep?.inMeters" class="text-sm text-blue-100">in {{ formatDistance(nextStep.inMeters) }}</p>
-      </div>
 
       <div
         v-if="picking || needsStart"
@@ -250,54 +100,6 @@ onBeforeUnmount(stopNavigation)
       <template v-else-if="!building">
         <p class="font-medium">Building not found.</p>
         <RouterLink to="/" class="mt-2 inline-block font-semibold text-blue-700">Back to home</RouterLink>
-      </template>
-
-      <!-- ===== Navigating ===== -->
-      <template v-else-if="navigating && ok">
-        <div class="flex items-baseline justify-between">
-          <div>
-            <p class="text-2xl font-bold">{{ formatDistance(remaining) }}</p>
-            <p class="text-sm text-slate-500">about {{ walkingMinutes(remaining) }} min to {{ building.name }}</p>
-          </div>
-          <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 font-semibold text-slate-700" @click="stopNavigation">End</button>
-        </div>
-
-        <!-- GPS quality: arrival only trusts good readings -->
-        <p v-if="posAccuracy != null" class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium" :class="gpsWeak ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'">
-          <span class="h-2 w-2 rounded-full" :class="gpsWeak ? 'bg-amber-500' : 'bg-green-600'" />
-          <template v-if="simPos">Simulated position</template>
-          <template v-else-if="gpsWeak">Weak GPS (±{{ Math.round(posAccuracy) }} m), arrival paused</template>
-          <template v-else>GPS ±{{ Math.round(posAccuracy) }} m</template>
-        </p>
-
-        <!-- Started right next to the destination -->
-        <div v-if="alreadyHere" class="mt-3 flex items-center justify-between gap-3 rounded-xl bg-green-50 p-3 ring-1 ring-green-200">
-          <p class="text-sm text-green-900">You're already at <b>{{ building.name }}</b>.</p>
-          <button type="button" class="shrink-0 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white" @click="arrive">I'm here</button>
-        </div>
-
-        <!-- Very short trip: say where to look -->
-        <p v-else-if="remaining != null && remaining < 40" class="mt-3 rounded-xl bg-blue-50 p-2 text-xs text-blue-900">
-          {{ building.name }} is about {{ Math.max(5, Math.round(remaining / 5) * 5) }} m away. Look around for its entrance.
-        </p>
-
-        <p v-if="result.direct" class="mt-3 rounded-xl bg-amber-50 p-2 text-xs text-amber-900">
-          Direct line: {{ result.reason }} Watch for buildings and walls on the way.
-        </p>
-        <p v-if="!liveGps && !simPos" class="mt-3 rounded-xl bg-slate-50 p-2 text-xs text-slate-600">
-          Live tracking needs GPS on campus. Testing from elsewhere? Use Simulate walk.
-        </p>
-
-        <div class="mt-4 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            class="rounded-xl border border-slate-300 py-3 text-sm font-semibold"
-            @click="simPos ? stopSim() : startSim()"
-          >
-            {{ simPos ? 'Stop simulation' : 'Simulate walk' }}
-          </button>
-          <button type="button" class="rounded-xl bg-green-600 py-3 text-sm font-semibold text-white" @click="arrive">I've arrived</button>
-        </div>
       </template>
 
       <!-- ===== Preview ===== -->
@@ -347,5 +149,7 @@ onBeforeUnmount(stopNavigation)
         </template>
       </template>
     </section>
+
+    <LiveNavigation v-if="navigating && ok" :building-id="buildingId" @end="stopNavigation" @arrived="arrive" />
   </main>
 </template>

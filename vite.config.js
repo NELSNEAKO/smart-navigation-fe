@@ -52,7 +52,19 @@ export default defineConfig(({ mode }) => {
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          {
+            // Navigation map (MapLibre + OpenFreeMap): styles, vector tiles, fonts, icons.
+            urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'nav-map',
+              expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
+        // MapLibre is big; let the service worker precache it too.
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
     }),
   ],

@@ -96,7 +96,13 @@ export const useMapStore = defineStore('map', () => {
     }
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        gps.value = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }
+        gps.value = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, // direction of travel, degrees
+          speed: Number.isFinite(pos.coords.speed) ? pos.coords.speed : null, // m/s
+        }
         gpsError.value = null
       },
       (err) => {
@@ -157,9 +163,19 @@ export const useMapStore = defineStore('map', () => {
    * error === 'no-start' means there is no QR code, tapped point or GPS fix yet.
    */
   function routeTo(buildingId) {
+    return routeWith(start.value, buildingId)
+  }
+
+  /** Reroute from any position (live navigation when the visitor leaves the route). */
+  function routeFrom(point, buildingId) {
+    const hit = nodes.value.length ? nearest(nodes.value, point) : null
+    const node = hit && hit.distance <= MAX_SNAP_M ? hit.item : null
+    return routeWith({ point, node, source: 'gps', label: 'your location' }, buildingId)
+  }
+
+  function routeWith(from, buildingId) {
     const building = buildingById.value.get(buildingId)
     if (!building) return { error: 'Building not found.' }
-    const from = start.value
     if (!from) return { error: 'no-start' }
 
     const entrances = entrancesOf(buildingId)
@@ -176,7 +192,7 @@ export const useMapStore = defineStore('map', () => {
 
   function pathRoute(result, building, from) {
     const pathNodes = result.path.map((id) => nodeById.value.get(id))
-    const points = pathNodes.map((n) => ({ lat: n.lat, lng: n.lng }))
+    const points = pathNodes.map((n) => ({ lat: n.lat, lng: n.lng, id: n.id, label: n.label || null }))
     let distance = result.distance
 
     // From GPS or a tapped point, also draw (and count) the walk to the first walkway point.
@@ -199,7 +215,7 @@ export const useMapStore = defineStore('map', () => {
     return {
       points: [
         { lat: from.point.lat, lng: from.point.lng },
-        { lat: target.lat, lng: target.lng },
+        { lat: target.lat, lng: target.lng, label: target.label || null },
       ],
       distance,
       target,
@@ -298,6 +314,6 @@ export const useMapStore = defineStore('map', () => {
     nodeById, buildingById,
     fromCode, setFromCode, manualStart, setManualStart, useLiveGps,
     gps, gpsError, startGps, start, offCampus, nearestBuilding,
-    entrancesOf, routeTo, search, findRoom,
+    entrancesOf, routeTo, routeFrom, search, findRoom,
   }
 })

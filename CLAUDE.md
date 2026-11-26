@@ -42,7 +42,13 @@ vercel.json         /api rewrite to Render + SPA fallback
 ## Visitor screens
 - `/` **HomeView**: "Where do you want to go?" search (inline results), Browse by category (only categories that have buildings), Popular places (`GET /api/popular`, falls back to all buildings), events, link to the map.
 - `/place/:buildingId` **PlaceView**: destination card (category, description, searched room highlighted, walk time/distance, floors and rooms) with **Start navigation** (→ `/route/:id?go=1`).
-- `/map` **MapView**: the full campus map (secondary). `/route/:id` live navigation, `/arrived/:id`.
+- `/map` **MapView**: the full campus map (secondary). `/route/:id` route preview (Leaflet), `/arrived/:id`.
+- **Live navigation** (`components/nav/LiveNavigation.vue`, lazy-loaded from RouteView because MapLibre is ~290 KB gz): full-screen MapLibre GL map with OpenFreeMap styles (`liberty` by day, `dark` 18:00–06:00, no API key), tilted 55° and rotated to the walking direction; blue arrow + facing cone; maneuver banner with turn icon, distance, "Then …"; "just ahead" under 15 m; bottom bar with minutes · metres · arrival time; compass (heading-up / north-up), re-center, voice (Web Speech API, off by default, remembered in localStorage); reroute after 2 good readings > 20 m off the route; precise arrival rule from the store; Simulate walk for demos.
+  - Turn-by-turn engine: `lib/maneuvers.js` (`buildManeuvers`, `snapToRoute`, `pointAlong`); route points carry `label` so named points become landmarks ("Turn left at Canteen corner").
+  - Heading: `composables/useHeading.js` (compass via deviceorientation / iOS `webkitCompassHeading`; `askCompassPermission()` must be called inside the Start tap on iPhone). While walking, GPS `heading` (speed > 0.7 m/s) wins; otherwise compass; otherwise route direction.
+  - Store: `routeFrom(point, buildingId)` reroutes from any position; `gps` also has `heading` and `speed`.
+  - MapLibre sets `position: relative` on its container, so the map div must fill a positioned wrapper.
+  - Dev hooks: `window.__navDebug.gps(lat, lng, acc, heading, speed)`, `window.__navMap`.
 - Categories: `src/lib/categories.js` (ids match the backend list); search also matches category names.
 
 ## Key behaviour
