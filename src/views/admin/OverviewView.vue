@@ -63,6 +63,7 @@ const doneCount = computed(() => steps.value.filter((s) => s.done).length)
 
 function openIssue(issue) {
   if (issue.buildingId && issue.fix === 'Move pin') router.push({ path: '/admin/buildings', query: { edit: issue.buildingId } })
+  else if (issue.buildingId && issue.fix === 'Add entrance') router.push({ path: '/admin/buildings', query: { edit: issue.buildingId, tab: 'entrances' } })
   else router.push('/admin/nodes')
 }
 </script>

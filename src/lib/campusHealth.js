@@ -56,7 +56,7 @@ export function campusHealth({ buildings, nodes, edges }) {
       continue
     }
     if (!entrances.length) {
-      issues.push({ level: 'warning', buildingId: b.id, title: `${b.name} has no entrance`, text: 'Mark an entrance point on the Paths map so routes end at the door.', fix: 'Add entrance' })
+      issues.push({ level: 'warning', buildingId: b.id, title: `${b.name} has no entrance`, text: 'Add its door point so routes end at the entrance.', fix: 'Add entrance' })
     } else if (qrIds.length && !isReachable) {
       issues.push({ level: 'warning', buildingId: b.id, title: `${b.name} can't be reached`, text: 'No path connects a QR start point to its entrance.', fix: 'Connect paths' })
     }

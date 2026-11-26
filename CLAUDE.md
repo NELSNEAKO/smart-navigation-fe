@@ -59,6 +59,7 @@ vercel.json         /api rewrite to Render + SPA fallback
 - Feedback via `src/lib/feedback.js`: `toast()` / `toast.error()` and `await confirmAction({ title, message })`. Never `alert`/`confirm`.
 - `src/lib/campusHealth.js` finds data problems (no entrance, unreachable, misplaced pin) for the Overview page and the building status badges.
 - Layout: sidebar on desktop (≥1024px), top bar + bottom tabs on phones.
+- Building drawer tabs: Details · **Entrances** (`components/admin/EntrancesEditor.vue`: place door points just outside the door by tapping the map or with averaged GPS; new doors auto-join the nearest walkway point within 60 m; list shows "On the walkway" / "Not connected" with a Join button) · Floors. Overview's "Add entrance" deep-links to `/admin/buildings?edit=<id>&tab=entrances`.
 - Paths editor (`views/admin/NodesView.vue`): Select / Point / Draw / Connect modes, **Record walk** (GPS track → `simplify` + `enforceSpacing` + `snapToNetwork` in `lib/pathTools.js` → one `POST /api/paths`), averaged **Add point here** (`sampleGps` in `lib/gps.js`), auto-join to points within 6 m / 14 px, and an in-memory **Undo** (Ctrl+Z). In dev, `window.__pathsDebug.feed(lat, lng, accuracy)` feeds fake GPS readings to the recorder.
 
 ## Conventions

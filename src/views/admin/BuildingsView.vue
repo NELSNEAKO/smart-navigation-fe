@@ -17,6 +17,7 @@ import { CATEGORIES, categoryById } from '../../lib/categories'
 const categoryOptions = [{ value: '', label: 'No category' }, ...CATEGORIES.map((c) => ({ value: c.id, label: c.label }))]
 import LocationPicker from '../../components/admin/LocationPicker.vue'
 import FloorsEditor from '../../components/admin/FloorsEditor.vue'
+import EntrancesEditor from '../../components/admin/EntrancesEditor.vue'
 
 const campus = useMapStore()
 const route = useRoute()
@@ -24,7 +25,7 @@ const router = useRouter()
 
 const query = ref('')
 const editingId = ref(null) // null = closed, 'new' = creating, otherwise building id
-const tab = ref('details') // details | floors
+const tab = ref('details') // details | entrances | floors
 const form = ref(blank())
 const errors = ref({})
 const saving = ref(false)
@@ -73,7 +74,7 @@ watch(
   () => [route.query.edit, campus.status],
   ([id]) => {
     const b = id && campus.buildingById.get(id)
-    if (b && editingId.value !== id) openEdit(b)
+    if (b && editingId.value !== id) openEdit(b, ['entrances', 'floors'].includes(route.query.tab) ? route.query.tab : 'details')
   },
   { immediate: true },
 )
@@ -243,9 +244,9 @@ async function remove(b) {
       @close="close"
     >
       <!-- Tabs (only after it exists) -->
-      <div v-if="current" class="-mt-1 mb-5 grid grid-cols-2 rounded-lg bg-canvas p-1 ring-1 ring-line ring-inset">
+      <div v-if="current" class="-mt-1 mb-5 grid grid-cols-3 rounded-lg bg-canvas p-1 ring-1 ring-line ring-inset">
         <button
-          v-for="t in [{ id: 'details', label: 'Details & location' }, { id: 'floors', label: `Floors & rooms (${current.floors?.length || 0})` }]"
+          v-for="t in [{ id: 'details', label: 'Details' }, { id: 'entrances', label: `Entrances (${health.perBuilding.get(current.id)?.entrances ?? 0})` }, { id: 'floors', label: `Floors (${current.floors?.length || 0})` }]"
           :key="t.id"
           type="button"
           class="rounded-md py-2 text-sm font-medium transition-colors"
@@ -268,6 +269,7 @@ async function remove(b) {
         </div>
       </form>
 
+      <EntrancesEditor v-if="current && tab === 'entrances'" :building="current" />
       <FloorsEditor v-if="current && tab === 'floors'" :building="current" @changed="campus.load(true)" />
 
       <template #footer>
