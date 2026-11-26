@@ -8,8 +8,18 @@ import { categoryById } from '../lib/categories'
 const FROM_KEY = 'campusnav.from'
 // A GPS fix farther than this from every walkway point is treated as "not on campus".
 const MAX_SNAP_M = 300
-// Within this distance of the destination entrance the visitor counts as arrived.
-export const ARRIVE_M = 20
+// ---- Arrival rule (see RouteView) ----
+// Phone GPS is ±5–15 m outdoors and worse near walls, so one reading is never trusted alone.
+export const ARRIVE_BASE_M = 6 // radius around the destination with a perfect reading
+export const ARRIVE_CAP_M = 12 // radius never grows beyond this
+export const ARRIVE_MAX_ACCURACY_M = 20 // readings worse than this are ignored for arrival
+export const ARRIVE_ARM_M = 10 // must move this far (or be this far outside the radius) before auto-arrival
+export const ARRIVE_CONFIRM_READINGS = 2 // consecutive good readings inside the radius
+
+/** Arrival radius for a reading with this accuracy (metres): 6–12 m. */
+export function arrivalRadius(accuracy = 0) {
+  return Math.min(ARRIVE_CAP_M, ARRIVE_BASE_M + Math.max(0, accuracy) / 2)
+}
 
 function readFrom() {
   try {

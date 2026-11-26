@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useMapStore, ARRIVE_M } from '../stores/map'
+import { useMapStore, arrivalRadius, ARRIVE_ARM_M, ARRIVE_CONFIRM_READINGS, ARRIVE_MAX_ACCURACY_M } from '../stores/map'
 import { distanceBetween, formatDistance, walkingMinutes } from '../lib/geo'
 import MapCanvas from '../components/MapCanvas.vue'
 import RouteSteps from '../components/RouteSteps.vue'
@@ -43,9 +43,27 @@ let wakeLock = null
 const liveGps = computed(() => (map.gps && !map.offCampus ? map.gps : null))
 const currentPos = computed(() => simPos.value ?? (navigating.value ? liveGps.value : null))
 
+// Arrival state for this navigation session.
+const startPos = ref(null) // first good position after navigation started
+const armed = ref(false) // visitor has walked away from the start, so auto-arrival is allowed
+const alreadyHere = ref(false) // navigation started within the arrival radius
+let insideCount = 0 // consecutive good readings inside the radius
+
+function resetArrival() {
+  startPos.value = null
+  armed.value = false
+  alreadyHere.value = false
+  insideCount = 0
+}
+
+// Accuracy of the position in use: the simulation is exact.
+const posAccuracy = computed(() => (simPos.value ? 0 : (currentPos.value?.accuracy ?? null)))
+const gpsWeak = computed(() => posAccuracy.value != null && posAccuracy.value > ARRIVE_MAX_ACCURACY_M)
+
 async function startNavigation() {
   if (!ok.value) return
   if (liveGps.value && map.start?.source !== 'gps') map.useLiveGps() // follow the phone, not the old start
+  resetArrival()
   navigating.value = true
   try {
     wakeLock = await navigator.wakeLock?.request('screen') // keep the screen on while walking
@@ -56,6 +74,7 @@ async function startNavigation() {
 
 function stopNavigation() {
   navigating.value = false
+  resetArrival()
   stopSim()
   wakeLock?.release?.().catch(() => {})
   wakeLock = null
@@ -104,6 +123,7 @@ function startSim() {
   const pts = result.value.points
   let seg = 0
   let t = 0
+  resetArrival() // the simulated walk starts its own session from the route start
   simPos.value = { ...pts[0] }
   const stepM = 6 // metres per tick (~4x walking speed at 2 ticks/s)
   simTimer = setInterval(() => {
@@ -137,9 +157,42 @@ function arrive() {
   stopNavigation()
   router.replace({ name: 'arrived', params: { buildingId: buildingId.value }, query: arrivedQuery.value })
 }
+// Arrive only when it's really true:
+//  - ignore weak readings (worse than ±20 m),
+//  - radius 6–12 m depending on the reading's accuracy,
+//  - only after the visitor has walked away from where they started ("armed"),
+//  - and only after 2 consecutive good readings inside the radius.
 watch(currentPos, (pos) => {
-  if (pos && navigating.value && ok.value && distanceBetween(pos, result.value.target) <= ARRIVE_M) arrive()
+  if (!pos || !navigating.value || !ok.value) return
+  const acc = posAccuracy.value ?? 0
+  if (acc > ARRIVE_MAX_ACCURACY_M) {
+    insideCount = 0
+    return
+  }
+  const target = result.value.target
+  const d = distanceBetween(pos, target)
+  const radius = arrivalRadius(acc)
+
+  if (!startPos.value) {
+    startPos.value = { lat: pos.lat, lng: pos.lng }
+    if (d <= radius) alreadyHere.value = true
+    return
+  }
+  if (!armed.value && (distanceBetween(pos, startPos.value) >= ARRIVE_ARM_M || d > radius + ARRIVE_ARM_M)) {
+    armed.value = true
+    alreadyHere.value = false
+  }
+  if (!armed.value) return
+
+  insideCount = d <= radius ? insideCount + 1 : 0
+  if (insideCount >= ARRIVE_CONFIRM_READINGS) arrive()
 })
+
+// Dev-only: feed fake GPS readings to test arrival without walking.
+// window.__navDebug.gps(lat, lng, accuracyMetres)
+if (import.meta.env.DEV) {
+  window.__navDebug = { gps: (lat, lng, accuracy = 5) => (map.gps = { lat, lng, accuracy }) }
+}
 
 // "Start navigation" on the building card opens this page with ?go=1.
 watch(
@@ -208,6 +261,25 @@ onBeforeUnmount(stopNavigation)
           </div>
           <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 font-semibold text-slate-700" @click="stopNavigation">End</button>
         </div>
+
+        <!-- GPS quality: arrival only trusts good readings -->
+        <p v-if="posAccuracy != null" class="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium" :class="gpsWeak ? 'bg-amber-50 text-amber-900' : 'bg-slate-100 text-slate-600'">
+          <span class="h-2 w-2 rounded-full" :class="gpsWeak ? 'bg-amber-500' : 'bg-green-600'" />
+          <template v-if="simPos">Simulated position</template>
+          <template v-else-if="gpsWeak">Weak GPS (±{{ Math.round(posAccuracy) }} m), arrival paused</template>
+          <template v-else>GPS ±{{ Math.round(posAccuracy) }} m</template>
+        </p>
+
+        <!-- Started right next to the destination -->
+        <div v-if="alreadyHere" class="mt-3 flex items-center justify-between gap-3 rounded-xl bg-green-50 p-3 ring-1 ring-green-200">
+          <p class="text-sm text-green-900">You're already at <b>{{ building.name }}</b>.</p>
+          <button type="button" class="shrink-0 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white" @click="arrive">I'm here</button>
+        </div>
+
+        <!-- Very short trip: say where to look -->
+        <p v-else-if="remaining != null && remaining < 40" class="mt-3 rounded-xl bg-blue-50 p-2 text-xs text-blue-900">
+          {{ building.name }} is about {{ Math.max(5, Math.round(remaining / 5) * 5) }} m away. Look around for its entrance.
+        </p>
 
         <p v-if="result.direct" class="mt-3 rounded-xl bg-amber-50 p-2 text-xs text-amber-900">
           Direct line: {{ result.reason }} Watch for buildings and walls on the way.
