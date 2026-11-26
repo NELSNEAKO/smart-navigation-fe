@@ -135,6 +135,7 @@ watch(() => draft.value && [draft.value.lat, draft.value.lng], drawPin)
             :extra-points="campus.nodes"
             :lock-to-campus="false"
             :campus-area="draft"
+            basemap="street"
             @ready="onReady"
             @map-click="setCentre($event, { pan: false })"
           />

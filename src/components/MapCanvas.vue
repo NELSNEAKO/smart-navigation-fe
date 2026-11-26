@@ -6,6 +6,7 @@ import L from 'leaflet'
 import { FALLBACK_CENTER, FALLBACK_ZOOM, BOUNDS_PADDING_DEG, TILE_URL, TILE_ATTRIBUTION } from '../lib/campus'
 import { distanceBetween } from '../lib/geo'
 import { areaBounds, circleRing } from '../lib/campusArea'
+import { CAMPUS_COLORS as C, WALKWAY_WIDTH_M, DEFAULT_ROAD_WIDTH_M, DEFAULT_CROSSING_WIDTH_M, centroid, metersPerPixel } from '../lib/campusStyle'
 import { useMapStore } from '../stores/map'
 
 const props = defineProps({
@@ -22,16 +23,25 @@ const props = defineProps({
   // Campus area to show ({ lat, lng, radiusM }). Defaults to the one the admin saved;
   // the Campus area admin screen passes its unsaved draft for a live preview. null = none.
   campusArea: { type: Object, default: undefined },
+  // 'auto': the drawn campus map once a campus area is set (street map before that).
+  // 'street': always OpenStreetMap (e.g. the Campus area screen, to find the campus).
+  basemap: { type: String, default: 'auto' },
+  // Draw walkway paths as white walkways (the admin Paths editor draws its own lines instead).
+  showWalkways: { type: Boolean, default: true },
+  // Draw roads, crossings and areas (the admin Campus map editor draws editable ones itself).
+  showFeatures: { type: Boolean, default: true },
 })
 const emit = defineEmits(['ready', 'building-click', 'map-click'])
 
 const el = ref(null)
 let map
-const layers = { buildings: null, user: null, start: null, route: null, mask: null }
+const layers = { buildings: null, user: null, start: null, route: null, mask: null, campus: null }
+let tiles = null
 
 const store = useMapStore()
 const area = computed(() => (props.campusArea !== undefined ? props.campusArea : store.campus))
-const MASK_COLOR = '#e2e8f0' // hides everything outside the campus circle
+const MASK_COLOR = '#e2e8f0' // hides everything outside the campus circle (street map mode)
+const drawn = computed(() => props.basemap !== 'street' && !!area.value)
 
 // Points farther than this from the middle of the data (e.g. a building saved in the
 // wrong city by mistake) are left out, so one bad pin can't zoom the map out to sea.
@@ -86,7 +96,7 @@ function applyBounds() {
 function drawMask() {
   layers.mask?.remove()
   layers.mask = null
-  if (!area.value) return
+  if (!area.value || drawn.value) return // the drawn map has no street tiles to hide
   const ring = circleRing(area.value).map((p) => [p.lat, p.lng])
   const world = [
     [85, -180],
@@ -100,11 +110,107 @@ function drawMask() {
   ]).addTo(map)
 }
 
+// Street tiles only when not showing the drawn campus map.
+function applyBasemap() {
+  if (!map) return
+  if (drawn.value) {
+    tiles?.remove()
+    el.value.style.background = C.outside
+  } else {
+    if (tiles && !map.hasLayer(tiles)) tiles.addTo(map)
+    el.value.style.background = ''
+  }
+}
+
+// Width in pixels for something that is "meters" wide on the ground, at the current zoom.
+const px = (meters, min = 2) => Math.max(min, meters / metersPerPixel(map.getCenter().lat, map.getZoom()))
+
+// The drawn campus: land, areas, roads, crossings and walkways (buildings: drawBuildings).
+function drawCampus() {
+  layers.campus?.remove()
+  layers.campus = null
+  if (!map || !drawn.value) return
+  const g = L.layerGroup()
+  const base = { pane: 'campusBase', interactive: false }
+  const ll = (pts) => pts.map((p) => [p.lat, p.lng])
+
+  L.polygon(ll(circleRing(area.value)), { ...base, stroke: false, fillColor: C.land, fillOpacity: 1 }).addTo(g)
+
+  for (const ft of props.showFeatures ? store.features : []) {
+    if (!Array.isArray(ft.points) || ft.points.length < 2) continue
+    if (ft.kind === 'area') {
+      L.polygon(ll(ft.points), { ...base, color: C.areaStroke, weight: 1, fillColor: C.area, fillOpacity: 1 }).addTo(g)
+    } else if (ft.kind === 'road') {
+      const w = px(ft.widthM || DEFAULT_ROAD_WIDTH_M, 6)
+      L.polyline(ll(ft.points), { ...base, color: C.road, weight: w, lineCap: 'butt', lineJoin: 'round' }).addTo(g)
+      L.polyline(ll(ft.points), { ...base, color: C.roadCenter, weight: Math.max(1.5, w / 12), dashArray: w * 0.9 + ' ' + w * 0.7, lineCap: 'butt' }).addTo(g)
+    }
+  }
+  if (props.showWalkways) {
+    const w = px(WALKWAY_WIDTH_M, 4)
+    for (const e of store.edges) {
+      const a = store.nodeById.get(e.fromId)
+      const b = store.nodeById.get(e.toId)
+      if (a && b) {
+        L.polyline(
+          [
+            [a.lat, a.lng],
+            [b.lat, b.lng],
+          ],
+          { ...base, color: C.walkway, weight: w, lineCap: 'round', lineJoin: 'round' },
+        ).addTo(g)
+      }
+    }
+  }
+  for (const ft of props.showFeatures ? store.features : []) {
+    if (ft.kind !== 'crossing' || !Array.isArray(ft.points) || ft.points.length < 2) continue
+    const w = px(ft.widthM || DEFAULT_CROSSING_WIDTH_M, 4)
+    const dash = Math.max(3, w * 0.45)
+    L.polyline(ll(ft.points), { ...base, color: C.crossing, weight: w, dashArray: dash + ' ' + dash, lineCap: 'butt' }).addTo(g)
+  }
+  layers.campus = g.addTo(map)
+}
+
+const hasShape = (b) => Array.isArray(b.shape?.points) && b.shape.points.length >= 3
+
+function escapeHtml(t) {
+  const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+  return String(t).replace(/[&<>"']/g, (ch) => map[ch])
+}
+
 function drawBuildings() {
   layers.buildings?.remove()
   layers.buildings = L.layerGroup(
-    props.buildings.map((b) => {
+    props.buildings.flatMap((b) => {
       const active = b.id === props.highlightId
+      if (drawn.value && hasShape(b)) {
+        const click = (e) => {
+          L.DomEvent.stopPropagation(e) // don't also fire map-click
+          emit('building-click', b)
+        }
+        const c = centroid(b.shape.points)
+        return [
+          L.polygon(
+            b.shape.points.map((p) => [p.lat, p.lng]),
+            {
+              color: active ? C.buildingActiveStroke : C.buildingStroke,
+              weight: active ? 3 : 1.5,
+              fillColor: active ? C.buildingActive : C.building,
+              fillOpacity: 1,
+              lineJoin: 'round',
+            },
+          ).on('click', click),
+          L.marker([c.lat, c.lng], {
+            pane: 'campusLabels',
+            interactive: false,
+            icon: L.divIcon({
+              className: 'campus-label',
+              iconSize: null,
+              html: '<span class="block -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-[12px] font-semibold" style="color:' + C.buildingLabel + '">' + escapeHtml(b.name) + '</span>',
+            }),
+          }),
+        ]
+      }
       return L.circleMarker([b.lat, b.lng], {
         radius: active ? 11 : 8,
         color: '#fff',
@@ -161,14 +267,21 @@ function drawRoute() {
 }
 
 onMounted(() => {
-  map = L.map(el.value, { zoomControl: false, maxZoom: 20 }).setView(FALLBACK_CENTER, FALLBACK_ZOOM)
-  L.tileLayer(TILE_URL, { maxZoom: 20, maxNativeZoom: 19, attribution: TILE_ATTRIBUTION }).addTo(map)
+  // Quarter-step zoom so the campus can fill the screen exactly (whole steps leave it small).
+  map = L.map(el.value, { zoomControl: false, maxZoom: 20, zoomSnap: 0.25, zoomDelta: 0.5 }).setView(FALLBACK_CENTER, FALLBACK_ZOOM)
+  tiles = L.tileLayer(TILE_URL, { maxZoom: 20, maxNativeZoom: 19, attribution: TILE_ATTRIBUTION }).addTo(map)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
   map.createPane('campusMask').style.zIndex = 350 // tiles are 200, paths/markers 400+
+  map.createPane('campusBase').style.zIndex = 250 // drawn land, roads, walkways: under buildings and routes
+  map.createPane('campusLabels').style.zIndex = 450 // building names above routes
+  map.getPane('campusLabels').style.pointerEvents = 'none'
+  map.on('zoomend', drawCampus) // ground widths in metres -> pixels change with zoom
   map.on('click', (e) => emit('map-click', { lat: e.latlng.lat, lng: e.latlng.lng }))
 
+  applyBasemap()
   applyBounds()
   drawMask()
+  drawCampus()
   drawBuildings()
   drawUser()
   drawStart()
@@ -195,10 +308,18 @@ watch(() => [props.buildings, props.extraPoints], () => {
   drawBuildings()
 })
 watch(() => props.highlightId, drawBuildings)
+watch(drawn, () => {
+  applyBasemap()
+  drawMask()
+  drawCampus()
+  drawBuildings()
+})
+watch(() => [store.features, store.edges, store.nodes], drawCampus)
 watch(
   area,
   () => {
     drawMask()
+    drawCampus()
     // The saved campus area (not a live admin preview) re-centres and re-locks the map.
     if (props.campusArea === undefined) {
       lockedOnce = false

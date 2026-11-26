@@ -34,6 +34,7 @@ export const useMapStore = defineStore('map', () => {
   const buildings = ref([])
   const nodes = ref([])
   const edges = ref([])
+  const features = ref([]) // roads, crossings, areas drawn on the campus map
   const campus = ref(null) // { name, lat, lng, radiusM } set by the admin, or null
   const events = ref([])
   const status = ref('idle') // idle | loading | ready | error
@@ -48,6 +49,7 @@ export const useMapStore = defineStore('map', () => {
       nodes.value = data.nodes
       edges.value = data.edges
       campus.value = data.campus ?? null
+      features.value = data.features ?? []
       status.value = 'ready'
       error.value = null
     } catch (e) {
@@ -312,7 +314,7 @@ export const useMapStore = defineStore('map', () => {
   }
 
   return {
-    buildings, nodes, edges, campus, events, status, error, load,
+    buildings, nodes, edges, campus, features, events, status, error, load,
     nodeById, buildingById,
     fromCode, setFromCode, manualStart, setManualStart, useLiveGps,
     gps, gpsError, startGps, start, offCampus, nearestBuilding,

@@ -31,6 +31,13 @@ const steps = computed(() => [
     action: 'Set campus area',
   },
   {
+    title: 'Draw the campus map',
+    text: 'Draw each building, the roads, crossings and areas visitors will see.',
+    done: campus.buildings.some((b) => b.shape?.points?.length >= 3),
+    to: '/admin/map',
+    action: 'Draw map',
+  },
+  {
     title: 'Add the buildings',
     text: 'Name each building and drop its pin on the map.',
     done: campus.buildings.length > 0,

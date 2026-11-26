@@ -56,6 +56,12 @@ vercel.json         /api rewrite to Render + SPA fallback
 - Every map shows only that circle: `MapCanvas` masks the outside (pane `campusMask`, z 350, under paths/markers), fits to it, and locks pan/zoom; `LiveNavigation` adds a `campus-mask` fill + `campus-edge` line under the route and sets MapLibre `maxBounds`. Helpers in `lib/campusArea.js`. With no campus area set, maps fall back to fitting the buildings.
 - MapCanvas moves to the campus first, then locks (`setMaxBounds` before the map is positioned/sized drags the view off-centre).
 
+## Drawn campus map (no street tiles)
+- Once a campus area is set, every map shows the **drawn campus** (mockup style): green land inside the circle, plain outside, building shapes with names, white walkways (from paths), roads with a dashed centre, zebra crossings, areas. Colours/helpers: `lib/campusStyle.js`. Street tiles only before a campus area exists, and on Admin → Campus (`basemap="street"`) to find the campus.
+- `MapCanvas` panes: `campusBase` (z 250: land, areas, roads, walkways, crossings), overlay (buildings, routes), `campusLabels` (z 450). Ground widths are in metres and redrawn on zoom. Quarter-step zoom so the campus fills the screen.
+- Admin → **Map** (`views/admin/CampusMapView.vue`): Leaflet-Geoman (MIT, pinned 2.20.6) to draw buildings (rectangle = two opposite corners, or corner-by-corner shape), roads, crossings, areas; select to edit corners / move / rotate; new building shapes become a new building or are assigned to an existing one. Geoman is a classic script: import `lib/leafletGlobal.js` before it so maps get `map.pm`.
+- Live navigation uses `lib/campusMapStyle.js` (a MapLibre style built from the same data: flat buildings, no street tiles; glyphs from OpenFreeMap fonts) when a campus area exists.
+
 ## Key behaviour
 - The client loads `GET /api/map` once. Search (text match), nearest building and Dijkstra all run in the browser.
 - Map: Leaflet + OpenStreetMap tiles, locked to the campus (`maxBounds` from the data, limited zoom). Plan to use a campus image overlay later.

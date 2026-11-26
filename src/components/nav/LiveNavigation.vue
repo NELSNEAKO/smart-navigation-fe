@@ -11,6 +11,7 @@ import { distanceBetween, formatDistance, walkingMinutes } from '../../lib/geo'
 import { buildManeuvers, pointAlong, snapToRoute } from '../../lib/maneuvers'
 import { useHeading } from '../../composables/useHeading'
 import { areaBounds, circleRing, outsideMaskGeoJSON } from '../../lib/campusArea'
+import { campusMapStyle } from '../../lib/campusMapStyle'
 import ManeuverIcon from './ManeuverIcon.vue'
 import AppIcon from '../ui/AppIcon.vue'
 
@@ -29,6 +30,7 @@ const STYLES = {
 }
 const hour = new Date().getHours()
 const theme = hour >= 18 || hour < 6 ? 'dark' : 'light' // automatic: dark at night
+const drawnMap = !!store.campus // use the admin's drawn campus map instead of street tiles
 const OFF_ROUTE_M = 20 // further than this from the route (with good GPS) → reroute
 const JUST_AHEAD_M = 15
 const PITCH = 55
@@ -255,9 +257,10 @@ function lineFeature(coords) {
 
 function addRouteLayers() {
   if (!map || map.getSource('route-ahead')) return
-  // Campus area: hide the world outside the admin's circle (added first, so the route draws on top).
+  // Street-map fallback only: hide the world outside the admin's circle (the drawn campus map
+  // has no street tiles, so it needs no mask).
   const area = store.campus
-  if (area) {
+  if (area && !drawnMap) {
     map.addSource('campus-mask', { type: 'geojson', data: outsideMaskGeoJSON(area) })
     map.addLayer({ id: 'campus-mask', type: 'fill', source: 'campus-mask', paint: { 'fill-color': theme === 'dark' ? '#0f172a' : '#e2e8f0', 'fill-opacity': 1 } })
     map.addSource('campus-edge', {
@@ -328,9 +331,15 @@ function toggleCompass() {
 onMounted(() => {
   computeRoute(null)
   const start = route.value?.points[0] ?? building.value
+  // The drawn campus map once a campus area is set; the free street map before that.
   map = new maplibregl.Map({
     container: mapEl.value,
-    style: STYLES[theme],
+    style: drawnMap
+      ? campusMapStyle(
+          { campus: store.campus, buildings: store.buildings, features: store.features, edges: store.edges, nodeById: store.nodeById },
+          { dark: theme === 'dark', activeBuildingId: props.buildingId },
+        )
+      : STYLES[theme],
     center: [start.lng, start.lat],
     zoom: ZOOM,
     pitch: PITCH,

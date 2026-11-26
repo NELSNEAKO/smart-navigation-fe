@@ -20,6 +20,7 @@ const routes = [
     children: [
       { path: '', redirect: '/admin/overview' },
       { path: 'overview', name: 'admin-overview', component: () => import('./views/admin/OverviewView.vue') },
+      { path: 'map', name: 'admin-map', component: () => import('./views/admin/CampusMapView.vue') },
       { path: 'campus', name: 'admin-campus', component: () => import('./views/admin/CampusView.vue') },
       { path: 'buildings', name: 'admin-buildings', component: () => import('./views/admin/BuildingsView.vue') },
       { path: 'nodes', name: 'admin-nodes', component: () => import('./views/admin/NodesView.vue') },
