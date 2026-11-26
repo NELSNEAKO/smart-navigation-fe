@@ -62,9 +62,15 @@ export default defineConfig(({ mode }) => {
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          {
+            // The navigation screen (with MapLibre, ~1 MB) is cached the first time it is used,
+            // not downloaded in the background by every visitor (see globIgnores).
+            urlPattern: ({ url }) => /\/assets\/LiveNavigation-.*\.(js|css)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'nav-screen', expiration: { maxEntries: 6, maxAgeSeconds: 60 * 60 * 24 * 60 } },
+          },
         ],
-        // MapLibre is big; let the service worker precache it too.
-        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        globIgnores: ['**/LiveNavigation-*'],
       },
     }),
   ],

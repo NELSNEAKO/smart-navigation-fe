@@ -83,15 +83,17 @@ function onMapClick(p) {
 
 async function useMyLocation() {
   if (!draft.value) startNew()
+  const forDraft = draft.value // the entrance this reading is for
   sampling.value = { count: 0 }
   try {
     const p = await sampleGps({ onProgress: (s) => (sampling.value = s) })
+    if (draft.value !== forDraft) return // cancelled or switched to another door while reading GPS
     draft.value.lat = round(p.lat)
     draft.value.lng = round(p.lng)
     map?.setView([p.lat, p.lng], 19, { animate: false })
     toast(`Placed at your location (±${Math.round(p.accuracy)} m). Drag the pin just outside the door if needed.`)
   } catch (e) {
-    toast.error(e.message)
+    if (draft.value === forDraft) toast.error(e.message)
   } finally {
     sampling.value = null
   }

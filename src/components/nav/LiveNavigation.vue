@@ -78,8 +78,10 @@ const snap = computed(() => (route.value && pos.value ? snapToRoute(route.value.
 const total = computed(() => snap.value?.total ?? route.value?.distance ?? 0)
 const along = computed(() => snap.value?.along ?? 0)
 const remaining = computed(() => Math.max(0, total.value - along.value))
+const nowTick = ref(Date.now())
+const clockTimer = setInterval(() => (nowTick.value = Date.now()), 30000)
 const eta = computed(() => {
-  const t = new Date(Date.now() + walkingMinutes(remaining.value) * 60000)
+  const t = new Date(nowTick.value + walkingMinutes(remaining.value) * 60000)
   return t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 })
 
@@ -122,7 +124,10 @@ function resetArrival() {
   insideCount = 0
 }
 
+let hasArrived = false
 function arrive() {
+  if (hasArrived) return // a second reading can land before the screen closes
+  hasArrived = true
   speak(`You have arrived at ${building.value?.name ?? 'your destination'}`)
   stopSim(true)
   emit('arrived')
@@ -220,6 +225,7 @@ let destMarker = null
 const following = ref(true)
 const mapBearing = ref(0)
 let lastCam = 0
+let camTimer = null
 
 function userEl() {
   const el = document.createElement('div')
@@ -277,7 +283,13 @@ function updateCamera(force = false) {
   if (p) userMarker?.setLngLat([p.lng, p.lat]).setRotation(heading.value)
   if (!following.value || !p) return
   const now = performance.now()
-  if (!force && now - lastCam < 200) return // the compass fires very often
+  if (!force && now - lastCam < 200) {
+    // The compass fires very often: skip, but make sure the latest heading is applied.
+    clearTimeout(camTimer)
+    camTimer = setTimeout(() => updateCamera(), 200 - (now - lastCam))
+    return
+  }
+  clearTimeout(camTimer)
   lastCam = now
   const bearing = followHeading.value ? heading.value : 0
   map.easeTo({
@@ -316,6 +328,11 @@ onMounted(() => {
   if (import.meta.env.DEV) window.__navMap = map // dev-only, for debugging
   map.on('error', (e) => console.warn('[nav map]', e?.error?.message || e))
   map.on('dragstart', () => (following.value = false))
+  for (const evt of ['zoomstart', 'rotatestart', 'pitchstart']) {
+    map.on(evt, (e) => {
+      if (e.originalEvent) following.value = false // only the visitor's own gestures, not our easeTo
+    })
+  }
   map.on('rotate', () => (mapBearing.value = map.getBearing()))
   // Add the route as soon as the style is parsed (don't wait for the first tiles).
   map.on('style.load', addRouteLayers)
@@ -326,6 +343,7 @@ onMounted(() => {
 
   compass.start() // works directly on Android; on iPhone uses the permission asked on "Start navigation"
   requestWakeLock()
+  document.addEventListener('visibilitychange', onVisibility)
   if (voiceOn.value) speak(`${maneuvers.value[0]?.text ?? ''}. ${primary.value ? spokenFor(primary.value, distToPrimary.value ?? 0) : ''}`)
   updateCamera(true)
 })
@@ -337,8 +355,12 @@ watch([snap, route], () => {
   if (t) destMarker?.setLngLat([t.lng, t.lat])
 })
 
-// Keep the screen on while navigating.
+// Keep the screen on while navigating. Browsers drop the lock when the page is hidden
+// (switching apps), so ask again when the visitor comes back.
 let wakeLock = null
+function onVisibility() {
+  if (document.visibilityState === 'visible') requestWakeLock()
+}
 async function requestWakeLock() {
   try {
     wakeLock = await navigator.wakeLock?.request('screen')
@@ -355,7 +377,10 @@ function end() {
 
 onBeforeUnmount(() => {
   stopSim()
-  window.speechSynthesis?.cancel()
+  if (!hasArrived) window.speechSynthesis?.cancel() // let "You have arrived" finish
+  clearTimeout(camTimer)
+  clearInterval(clockTimer)
+  document.removeEventListener('visibilitychange', onVisibility)
   wakeLock?.release?.().catch(() => {})
   map?.remove()
 })
@@ -395,7 +420,7 @@ if (import.meta.env.DEV) {
 
       <!-- Status chips -->
       <div class="flex flex-wrap gap-2">
-        <span v-if="route?.direct" class="pointer-events-auto rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 shadow">Direct line: walkway not mapped</span>
+        <span v-if="route?.direct" class="pointer-events-auto rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 shadow">Direct line: {{ route.reason || 'walkway not mapped' }}</span>
         <span v-if="gpsWeak" class="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 shadow">Weak GPS (±{{ Math.round(posAccuracy) }} m), arrival paused</span>
         <span v-if="calibrate" class="rounded-full bg-surface px-3 py-1 text-xs font-medium text-ink shadow">Compass unsure: wave your phone in a figure-8</span>
         <button

@@ -13,23 +13,34 @@ export function smoothAngle(prev, next, k = 0.25) {
 }
 
 let permissionGranted = false
+// The answer to the last permission request, while it is still pending. The navigation screen
+// mounts right after the Start tap, before the visitor has answered the iPhone prompt, so it
+// waits for this instead of asking again (asking again outside a tap fails).
+let pendingPermission = null
 
 /**
  * Ask for compass access. On iPhone this must run directly inside a tap handler
  * (call it from the "Start navigation" button before opening the navigation screen).
- * Returns 'granted' | 'denied' | 'not-needed' | 'unsupported'.
+ * Resolves 'granted' | 'denied' | 'error' (not called from a tap) | 'not-needed' | 'unsupported'.
  */
-export async function askCompassPermission() {
-  if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return 'unsupported'
+export function askCompassPermission() {
+  if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return Promise.resolve('unsupported')
   const ask = window.DeviceOrientationEvent.requestPermission
-  if (typeof ask !== 'function') return 'not-needed'
+  if (typeof ask !== 'function') return Promise.resolve('not-needed')
+  // Must be called synchronously here (not in a .then) so it still counts as part of the tap.
+  let request
   try {
-    const res = await ask.call(window.DeviceOrientationEvent)
-    permissionGranted = res === 'granted'
-    return permissionGranted ? 'granted' : 'denied'
-  } catch {
-    return 'denied'
+    request = Promise.resolve(ask.call(window.DeviceOrientationEvent))
+  } catch (e) {
+    request = Promise.reject(e)
   }
+  pendingPermission = request
+    .then((res) => {
+      permissionGranted = res === 'granted'
+      return permissionGranted ? 'granted' : 'denied'
+    })
+    .catch(() => 'error')
+  return pendingPermission
 }
 
 export function useHeading() {
@@ -71,6 +82,15 @@ export function useHeading() {
       return
     }
     const ask = window.DeviceOrientationEvent.requestPermission
+    // A request from the Start tap may still be waiting for the visitor's answer.
+    if (typeof ask === 'function' && !permissionGranted && pendingPermission) {
+      const res = await pendingPermission
+      pendingPermission = null
+      if (res === 'denied') {
+        status.value = 'denied'
+        return
+      }
+    }
     if (typeof ask === 'function' && !permissionGranted) {
       try {
         const res = await ask.call(window.DeviceOrientationEvent)
