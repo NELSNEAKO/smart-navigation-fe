@@ -51,6 +51,11 @@ vercel.json         /api rewrite to Render + SPA fallback
   - Dev hooks: `window.__navDebug.gps(lat, lng, acc, heading, speed)`, `window.__navMap`.
 - Categories: `src/lib/categories.js` (ids match the backend list); search also matches category names.
 
+## Campus area
+- Admin → **Campus** (`views/admin/CampusView.vue`): centre (paste coordinates or a Google Maps link, tap the map, drag the pin, or phone GPS) + radius slider, live preview, warning for buildings/points outside. Saved via `PUT /api/campus`; the store exposes it as `campus`.
+- Every map shows only that circle: `MapCanvas` masks the outside (pane `campusMask`, z 350, under paths/markers), fits to it, and locks pan/zoom; `LiveNavigation` adds a `campus-mask` fill + `campus-edge` line under the route and sets MapLibre `maxBounds`. Helpers in `lib/campusArea.js`. With no campus area set, maps fall back to fitting the buildings.
+- MapCanvas moves to the campus first, then locks (`setMaxBounds` before the map is positioned/sized drags the view off-centre).
+
 ## Key behaviour
 - The client loads `GET /api/map` once. Search (text match), nearest building and Dijkstra all run in the browser.
 - Map: Leaflet + OpenStreetMap tiles, locked to the campus (`maxBounds` from the data, limited zoom). Plan to use a campus image overlay later.

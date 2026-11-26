@@ -1,10 +1,12 @@
 <script setup>
 // Leaflet map locked to the campus. Draws buildings, the visitor's position and a route.
 // Admin screens add their own layers through the `ready` event (they get the Leaflet map).
-import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import L from 'leaflet'
 import { FALLBACK_CENTER, FALLBACK_ZOOM, BOUNDS_PADDING_DEG, TILE_URL, TILE_ATTRIBUTION } from '../lib/campus'
 import { distanceBetween } from '../lib/geo'
+import { areaBounds, circleRing } from '../lib/campusArea'
+import { useMapStore } from '../stores/map'
 
 const props = defineProps({
   buildings: { type: Array, default: () => [] },
@@ -17,12 +19,19 @@ const props = defineProps({
   lockToCampus: { type: Boolean, default: true },
   // Navigation mode: keep the map centred on userPos as it moves.
   follow: { type: Boolean, default: false },
+  // Campus area to show ({ lat, lng, radiusM }). Defaults to the one the admin saved;
+  // the Campus area admin screen passes its unsaved draft for a live preview. null = none.
+  campusArea: { type: Object, default: undefined },
 })
 const emit = defineEmits(['ready', 'building-click', 'map-click'])
 
 const el = ref(null)
 let map
-const layers = { buildings: null, user: null, start: null, route: null }
+const layers = { buildings: null, user: null, start: null, route: null, mask: null }
+
+const store = useMapStore()
+const area = computed(() => (props.campusArea !== undefined ? props.campusArea : store.campus))
+const MASK_COLOR = '#e2e8f0' // hides everything outside the campus circle
 
 // Points farther than this from the middle of the data (e.g. a building saved in the
 // wrong city by mistake) are left out, so one bad pin can't zoom the map out to sea.
@@ -32,7 +41,11 @@ const median = (xs) => {
   return s[Math.floor(s.length / 2)]
 }
 
+const toLeafletBounds = (b) => L.latLngBounds([b.south, b.west], [b.north, b.east])
+
 function campusBounds() {
+  // The admin's campus area wins: show exactly that circle.
+  if (area.value) return toLeafletBounds(areaBounds(area.value, 0.05))
   let pts = [...props.buildings, ...props.extraPoints].filter((p) => p && Number.isFinite(p.lat))
   if (!pts.length) return null
   const mid = { lat: median(pts.map((p) => p.lat)), lng: median(pts.map((p) => p.lng)) }
@@ -48,21 +61,43 @@ let lockedOnce = false
 function applyBounds() {
   const bounds = campusBounds()
   if (!bounds) return
-  if (props.lockToCampus) {
-    map.setMaxBounds(bounds)
-    map.options.maxBoundsViscosity = 1
-  }
   // A map with no size yet (styles still loading, hidden tab) would "fit" at max zoom.
   // Wait: the ResizeObserver calls applyBounds again once the box has a real size.
   const size = map.getSize()
   if (!lockedOnce && (size.x < 50 || size.y < 50)) return
   if (!lockedOnce) {
+    // Move to the campus FIRST, then lock. Locking while the view is still elsewhere (or
+    // unsized) makes Leaflet drag it to the nearest edge of the allowed area, off-centre.
+    map.setMaxBounds(null)
     // Compute the campus zoom directly; getZoom() is stale while an animation runs.
     const campusZoom = map.getBoundsZoom(bounds, false, L.point(16, 16))
     if (props.lockToCampus) map.setMinZoom(Math.max(campusZoom - 1, 14)) // one level out, no further
-    map.fitBounds(bounds, { padding: [16, 16], animate: false })
+    map.setView(bounds.getCenter(), campusZoom, { animate: false })
     lockedOnce = true
   }
+  if (props.lockToCampus) {
+    // With a campus area, allow a little slack around the circle so its edge can be centred.
+    map.setMaxBounds(area.value ? toLeafletBounds(areaBounds(area.value, 0.35)) : bounds)
+    map.options.maxBoundsViscosity = 1
+  }
+}
+
+// Cover the world outside the campus circle, above the tiles but below markers and paths.
+function drawMask() {
+  layers.mask?.remove()
+  layers.mask = null
+  if (!area.value) return
+  const ring = circleRing(area.value).map((p) => [p.lat, p.lng])
+  const world = [
+    [85, -180],
+    [85, 180],
+    [-85, 180],
+    [-85, -180],
+  ]
+  layers.mask = L.layerGroup([
+    L.polygon([world, ring], { pane: 'campusMask', stroke: false, fillColor: MASK_COLOR, fillOpacity: 1, interactive: false }),
+    L.polyline(ring, { pane: 'campusMask', color: '#1d4ed8', weight: 2, opacity: 0.55, dashArray: '6 6', interactive: false }),
+  ]).addTo(map)
 }
 
 function drawBuildings() {
@@ -129,9 +164,11 @@ onMounted(() => {
   map = L.map(el.value, { zoomControl: false, maxZoom: 20 }).setView(FALLBACK_CENTER, FALLBACK_ZOOM)
   L.tileLayer(TILE_URL, { maxZoom: 20, maxNativeZoom: 19, attribution: TILE_ATTRIBUTION }).addTo(map)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
+  map.createPane('campusMask').style.zIndex = 350 // tiles are 200, paths/markers 400+
   map.on('click', (e) => emit('map-click', { lat: e.latlng.lat, lng: e.latlng.lng }))
 
   applyBounds()
+  drawMask()
   drawBuildings()
   drawUser()
   drawStart()
@@ -158,6 +195,18 @@ watch(() => [props.buildings, props.extraPoints], () => {
   drawBuildings()
 })
 watch(() => props.highlightId, drawBuildings)
+watch(
+  area,
+  () => {
+    drawMask()
+    // The saved campus area (not a live admin preview) re-centres and re-locks the map.
+    if (props.campusArea === undefined) {
+      lockedOnce = false
+      applyBounds()
+    }
+  },
+  { deep: true },
+)
 watch(
   () => props.userPos,
   (p) => {

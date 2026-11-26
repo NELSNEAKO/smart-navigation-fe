@@ -14,6 +14,7 @@ onMounted(() => campus.load(true))
 
 const links = [
   { to: '/admin/overview', label: 'Overview', icon: 'dashboard' },
+  { to: '/admin/campus', label: 'Campus', icon: 'map' },
   { to: '/admin/buildings', label: 'Buildings', icon: 'building' },
   { to: '/admin/nodes', label: 'Paths', icon: 'route' },
   { to: '/admin/events', label: 'Events', icon: 'calendar' },
@@ -90,12 +91,12 @@ function logout() {
     </main>
 
     <!-- Phone bottom tabs -->
-    <nav class="fixed inset-x-0 bottom-0 z-[1100] grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="Admin">
+    <nav class="fixed inset-x-0 bottom-0 z-[1100] grid grid-cols-6 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden" aria-label="Admin">
       <RouterLink
         v-for="l in links"
         :key="l.to"
         :to="l.to"
-        class="flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium text-ink-muted"
+        class="flex h-16 flex-col items-center justify-center gap-1 text-[10px] font-medium text-ink-muted"
         active-class="!text-primary-600"
       >
         <AppIcon :name="l.icon" :size="22" />

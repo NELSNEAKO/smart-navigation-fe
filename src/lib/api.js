@@ -67,6 +67,8 @@ export const admin = {
   update: (resource, id, data) => request(`/${resource}/${id}`, { method: 'PUT', body: data, auth: true }),
   remove: (resource, id) => request(`/${resource}/${id}`, { method: 'DELETE', auth: true }),
   reports: (days = 30) => request(`/reports?days=${days}`, { auth: true }),
+  /** Set the campus area: { name?, lat, lng, radiusM }. */
+  saveCampus: (data) => request('/campus', { method: 'PUT', body: data, auth: true }),
   /** Save a whole walkway: points in order, each { id } (existing) or { lat, lng, label? }. */
   createPath: (points) => request('/paths', { method: 'POST', body: { points }, auth: true }),
   /** Undo: delete these paths and points in one request. */

@@ -24,6 +24,13 @@ const stats = computed(() => [
 // Setup guide: the order that makes navigation work.
 const steps = computed(() => [
   {
+    title: 'Set the campus area',
+    text: 'Choose the centre and radius. Visitors only see the map inside it.',
+    done: !!campus.campus,
+    to: '/admin/campus',
+    action: 'Set campus area',
+  },
+  {
     title: 'Add the buildings',
     text: 'Name each building and drop its pin on the map.',
     done: campus.buildings.length > 0,
