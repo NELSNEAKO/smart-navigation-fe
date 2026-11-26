@@ -10,7 +10,7 @@ import { useMapStore, arrivalRadius, ARRIVE_ARM_M, ARRIVE_CONFIRM_READINGS, ARRI
 import { distanceBetween, formatDistance, walkingMinutes } from '../../lib/geo'
 import { buildManeuvers, pointAlong, snapToRoute } from '../../lib/maneuvers'
 import { useHeading } from '../../composables/useHeading'
-import { areaBounds, circleRing, outsideMaskGeoJSON } from '../../lib/campusArea'
+import { areaBounds } from '../../lib/campusArea'
 import { campusMapStyle } from '../../lib/campusMapStyle'
 import ManeuverIcon from './ManeuverIcon.vue'
 import AppIcon from '../ui/AppIcon.vue'
@@ -257,18 +257,8 @@ function lineFeature(coords) {
 
 function addRouteLayers() {
   if (!map || map.getSource('route-ahead')) return
-  // Street-map fallback only: hide the world outside the admin's circle (the drawn campus map
-  // has no street tiles, so it needs no mask).
-  const area = store.campus
-  if (area && !drawnMap) {
-    map.addSource('campus-mask', { type: 'geojson', data: outsideMaskGeoJSON(area) })
-    map.addLayer({ id: 'campus-mask', type: 'fill', source: 'campus-mask', paint: { 'fill-color': theme === 'dark' ? '#0f172a' : '#e2e8f0', 'fill-opacity': 1 } })
-    map.addSource('campus-edge', {
-      type: 'geojson',
-      data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: circleRing(area).map((p) => [p.lng, p.lat]) } },
-    })
-    map.addLayer({ id: 'campus-edge', type: 'line', source: 'campus-edge', paint: { 'line-color': '#3b82f6', 'line-width': 2, 'line-opacity': 0.6, 'line-dasharray': [3, 3] } })
-  }
+  // No cover over the map: with a campus area the screen uses the drawn campus map
+  // (campusMapStyle), which has nothing outside the campus to hide.
   map.addSource('route-done', { type: 'geojson', data: lineFeature([]) })
   map.addSource('route-ahead', { type: 'geojson', data: lineFeature([]) })
   const lineLayout = { 'line-cap': 'round', 'line-join': 'round' }

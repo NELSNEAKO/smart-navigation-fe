@@ -40,7 +40,6 @@ let tiles = null
 
 const store = useMapStore()
 const area = computed(() => (props.campusArea !== undefined ? props.campusArea : store.campus))
-const MASK_COLOR = '#e2e8f0' // hides everything outside the campus circle (street map mode)
 const drawn = computed(() => props.basemap !== 'street' && !!area.value)
 
 // Points farther than this from the middle of the data (e.g. a building saved in the
@@ -92,22 +91,14 @@ function applyBounds() {
   }
 }
 
-// Cover the world outside the campus circle, above the tiles but below markers and paths.
+// Street map with a campus area (only the Admin → Campus screen): no cover over the map, just
+// a thin outline so the admin can see the circle they are setting. The drawn map needs neither.
 function drawMask() {
   layers.mask?.remove()
   layers.mask = null
-  if (!area.value || drawn.value) return // the drawn map has no street tiles to hide
+  if (!area.value || drawn.value) return
   const ring = circleRing(area.value).map((p) => [p.lat, p.lng])
-  const world = [
-    [85, -180],
-    [85, 180],
-    [-85, 180],
-    [-85, -180],
-  ]
-  layers.mask = L.layerGroup([
-    L.polygon([world, ring], { pane: 'campusMask', stroke: false, fillColor: MASK_COLOR, fillOpacity: 1, interactive: false }),
-    L.polyline(ring, { pane: 'campusMask', color: '#1d4ed8', weight: 2, opacity: 0.55, dashArray: '6 6', interactive: false }),
-  ]).addTo(map)
+  layers.mask = L.polyline(ring, { pane: 'campusMask', color: '#1d4ed8', weight: 2, opacity: 0.7, dashArray: '6 6', interactive: false }).addTo(map)
 }
 
 // Street tiles only when not showing the drawn campus map.
@@ -271,7 +262,7 @@ onMounted(() => {
   map = L.map(el.value, { zoomControl: false, maxZoom: 20, zoomSnap: 0.25, zoomDelta: 0.5 }).setView(FALLBACK_CENTER, FALLBACK_ZOOM)
   tiles = L.tileLayer(TILE_URL, { maxZoom: 20, maxNativeZoom: 19, attribution: TILE_ATTRIBUTION }).addTo(map)
   L.control.zoom({ position: 'bottomright' }).addTo(map)
-  map.createPane('campusMask').style.zIndex = 350 // tiles are 200, paths/markers 400+
+  map.createPane('campusMask').style.zIndex = 350 // campus outline on the street map (Admin → Campus)
   map.createPane('campusBase').style.zIndex = 250 // drawn land, roads, walkways: under buildings and routes
   map.createPane('campusLabels').style.zIndex = 450 // building names above routes
   map.getPane('campusLabels').style.pointerEvents = 'none'

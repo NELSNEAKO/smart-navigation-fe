@@ -47,16 +47,3 @@ export function parseLatLng(text) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
   return { lat, lng }
 }
-
-/** A GeoJSON polygon covering the world with the campus circle cut out (for MapLibre). */
-export function outsideMaskGeoJSON(area) {
-  const world = [
-    [-180, -85],
-    [180, -85],
-    [180, 85],
-    [-180, 85],
-    [-180, -85],
-  ]
-  const hole = circleRing(area).map((p) => [p.lng, p.lat]).reverse()
-  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [world, hole] } }
-}

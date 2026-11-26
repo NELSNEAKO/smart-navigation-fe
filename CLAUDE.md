@@ -53,7 +53,7 @@ vercel.json         /api rewrite to Render + SPA fallback
 
 ## Campus area
 - Admin → **Campus** (`views/admin/CampusView.vue`): centre (paste coordinates or a Google Maps link, tap the map, drag the pin, or phone GPS) + radius slider, live preview, warning for buildings/points outside. Saved via `PUT /api/campus`; the store exposes it as `campus`.
-- Every map shows only that circle: `MapCanvas` masks the outside (pane `campusMask`, z 350, under paths/markers), fits to it, and locks pan/zoom; `LiveNavigation` adds a `campus-mask` fill + `campus-edge` line under the route and sets MapLibre `maxBounds`. Helpers in `lib/campusArea.js`. With no campus area set, maps fall back to fitting the buildings.
+- Every map is limited to that circle: it fits to it and locks pan/zoom (MapLibre `maxBounds` in navigation). There is **no cover/overlay** over the map: with a campus area the maps show the drawn campus map; only Admin → Campus (street map) draws a thin dashed outline (pane `campusMask`) so the admin sees the radius. Helpers in `lib/campusArea.js`. With no campus area set, maps fall back to fitting the buildings.
 - MapCanvas moves to the campus first, then locks (`setMaxBounds` before the map is positioned/sized drags the view off-centre).
 
 ## Drawn campus map (no street tiles)
