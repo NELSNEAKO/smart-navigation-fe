@@ -95,18 +95,22 @@ export function pathLength(points) {
 
 /**
  * Average several GPS fixes, weighting precise ones more (1 / accuracy²).
- * Returns { lat, lng, accuracy } where accuracy is an estimate in metres.
+ * Returns { lat, lng, accuracy }. accuracy is the best single reading's accuracy, not the
+ * statistical "error of the mean": phone GPS errors drift together over seconds, so averaging
+ * a few seconds of readings smooths jitter but does not make the position several times better.
  */
 export function averageFixes(fixes) {
   if (!fixes.length) return null
   let w = 0
   let lat = 0
   let lng = 0
+  let best = Infinity
   for (const f of fixes) {
+    best = Math.min(best, f.accuracy)
     const wi = 1 / Math.max(f.accuracy, 1) ** 2
     w += wi
     lat += f.lat * wi
     lng += f.lng * wi
   }
-  return { lat: lat / w, lng: lng / w, accuracy: Math.sqrt(1 / w) }
+  return { lat: lat / w, lng: lng / w, accuracy: best }
 }

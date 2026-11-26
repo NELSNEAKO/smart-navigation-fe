@@ -79,19 +79,36 @@ function onMapClick(p) {
   if (!draft.value) return
   draft.value.lat = round(p.lat)
   draft.value.lng = round(p.lng)
+  if (draft.value.gps) draft.value.gps.moved = true // placed by hand now
 }
 
+// GPS quality of the last "use my location" reading, for the panel.
+const GOOD_M = 6
+const ROUGH_M = 15
+const gpsTone = computed(() => {
+  const a = draft.value?.gps?.accuracy
+  if (a == null) return null
+  return a <= GOOD_M ? 'good' : a <= ROUGH_M ? 'ok' : 'rough'
+})
+
+/**
+ * One tap: stand just outside the door and use the phone's GPS as the entrance.
+ * Starts a new entrance if none is being edited; averages several readings.
+ */
 async function useMyLocation() {
+  if (sampling.value) return // already reading
   if (!draft.value) startNew()
   const forDraft = draft.value // the entrance this reading is for
   sampling.value = { count: 0 }
   try {
     const p = await sampleGps({ onProgress: (s) => (sampling.value = s) })
     if (draft.value !== forDraft) return // cancelled or switched to another door while reading GPS
-    draft.value.lat = round(p.lat)
-    draft.value.lng = round(p.lng)
+    forDraft.lat = round(p.lat)
+    forDraft.lng = round(p.lng)
+    forDraft.gps = { accuracy: p.accuracy, count: p.count, moved: false }
     map?.setView([p.lat, p.lng], 19, { animate: false })
-    toast(`Placed at your location (±${Math.round(p.accuracy)} m). Drag the pin just outside the door if needed.`)
+    if (p.accuracy > ROUGH_M) toast.error(`GPS is rough (±${Math.round(p.accuracy)} m). Step into the open and try again, or drag the pin to the door.`)
+    else toast(`Entrance placed at your location (±${Math.round(p.accuracy)} m). Check the pin, then save.`)
   } catch (e) {
     if (draft.value === forDraft) toast.error(e.message)
   } finally {
@@ -193,11 +210,15 @@ function draw() {
     if (d.connect && near) {
       L.polyline([[d.lat, d.lng], [near.node.lat, near.node.lng]], { color: '#059669', weight: 4, dashArray: '6 6', interactive: false }).addTo(layer)
     }
+    if (d.gps && !d.gps.moved) {
+      L.circle([d.lat, d.lng], { radius: Math.min(d.gps.accuracy, 40), color: '#1d4ed8', weight: 1, fillOpacity: 0.1, interactive: false }).addTo(layer)
+    }
     const pin = L.marker([d.lat, d.lng], { draggable: true, autoPan: true }).addTo(layer)
     pin.on('dragend', () => {
       const p = pin.getLatLng()
       d.lat = round(p.lat)
       d.lng = round(p.lng)
+      if (d.gps) d.gps.moved = true // fine-tuned by hand
     })
   }
 }
@@ -208,7 +229,7 @@ function onReady(m) {
   draw()
 }
 
-watch(() => [campus.nodes, campus.edges, draft.value?.lat, draft.value?.lng, draft.value?.connect, draft.value?.id], draw)
+watch(() => [campus.nodes, campus.edges, draft.value?.lat, draft.value?.lng, draft.value?.connect, draft.value?.id, draft.value?.gps?.moved, draft.value?.gps?.accuracy], draw)
 watch(() => props.building.id, () => (draft.value = null))
 onBeforeUnmount(() => layer?.remove())
 </script>
@@ -240,9 +261,24 @@ onBeforeUnmount(() => layer?.remove())
         <AppIcon name="pin" :size="14" />{{ draft.lat.toFixed(6) }}, {{ draft.lng.toFixed(6) }} · drag the pin to fine-tune
       </p>
       <p v-else class="text-sm text-ink-soft">Tap the map just outside the door, or use your phone's GPS while standing there.</p>
+      <p
+        v-if="draft.gps"
+        class="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-sm"
+        :class="{ 'bg-success-50 text-success-600': gpsTone === 'good', 'bg-warning-50 text-warning-600': gpsTone === 'ok', 'bg-danger-50 text-danger-600': gpsTone === 'rough' }"
+      >
+        <AppIcon :name="gpsTone === 'rough' ? 'alert' : 'locate'" :size="16" class="mt-0.5" />
+        <span>
+          <template v-if="draft.gps.moved">From your location (±{{ Math.round(draft.gps.accuracy) }} m), then adjusted by hand.</template>
+          <template v-else>
+            Your location, accurate to about ±{{ Math.round(draft.gps.accuracy) }} m ({{ draft.gps.count }} readings).
+            <template v-if="gpsTone === 'rough'"> That's rough: step away from walls and try again, or drag the pin onto the door.</template>
+            <template v-else-if="gpsTone === 'ok'"> Check the pin is just outside the door.</template>
+          </template>
+        </span>
+      </p>
 
       <UiButton variant="secondary" size="sm" icon="locate" :loading="!!sampling" @click="useMyLocation">
-        {{ sampling ? `Reading GPS… ${sampling.count}` : "I'm at the door: use my location" }}
+        {{ sampling ? `Reading GPS… ${sampling.count}` : draft.gps ? 'Read my location again' : "I'm at the door: use my location" }}
       </UiButton>
 
       <label class="block">
@@ -280,11 +316,20 @@ onBeforeUnmount(() => layer?.remove())
     <section>
       <div class="mb-2 flex items-center justify-between">
         <h4 class="text-sm font-semibold text-ink">Entrances ({{ entrances.length }})</h4>
-        <UiButton v-if="!draft" size="sm" icon="plus" @click="startNew">Add entrance</UiButton>
+        <div v-if="!draft" class="flex gap-2">
+          <UiButton size="sm" variant="secondary" icon="locate" :loading="!!sampling" @click="useMyLocation">
+            {{ sampling ? `Reading GPS… ${sampling.count}` : 'Use my location' }}
+          </UiButton>
+          <UiButton size="sm" icon="plus" @click="startNew">Add entrance</UiButton>
+        </div>
       </div>
-      <p v-if="!entrances.length" class="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-ink-muted">
-        No entrance yet. Routes will end at the walkway point nearest the building, not at its door.
-      </p>
+      <div v-if="!entrances.length && !draft" class="rounded-lg border border-dashed border-line px-4 py-5 text-center">
+        <p class="text-sm text-ink-muted">No entrance yet. Routes will end at the walkway point nearest the building, not at its door.</p>
+        <p class="mt-3 text-sm text-ink-soft">Standing at the door? Make it the entrance in one tap:</p>
+        <UiButton class="mt-2" icon="locate" :loading="!!sampling" @click="useMyLocation">
+          {{ sampling ? `Reading GPS… ${sampling.count}` : 'Use my current location as the entrance' }}
+        </UiButton>
+      </div>
       <ul v-else class="divide-y divide-line overflow-hidden rounded-xl border border-line">
         <li v-for="n in entrances" :key="n.id" class="flex items-center gap-3 px-3 py-2.5">
           <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-success-50 text-success-600"><AppIcon name="door" :size="16" /></span>
