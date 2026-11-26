@@ -1,7 +1,7 @@
 <script setup>
 // Campus map editor: draw the flat campus map visitors see (buildings, roads, crossings, areas)
 // on the same drawn map. Uses Leaflet-Geoman (MIT) for drawing, corner editing, moving, rotating.
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import L from '../../lib/leafletGlobal' // must come before Geoman
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
@@ -20,10 +20,10 @@ const campus = useMapStore()
 const TOOLS = [
   { id: 'select', label: 'Select', icon: 'pointer', hint: 'Click a building, road or area to edit it.' },
   { id: 'rect', label: 'Building ▭', icon: 'building', hint: 'Click one corner of the building, then the opposite corner. You can rotate it afterwards.' },
-  { id: 'poly', label: 'Building ⬠', icon: 'building', hint: 'Click each corner of the building. Click the first corner again to finish.' },
-  { id: 'road', label: 'Road', icon: 'route', hint: 'Click along the road. Double-click (or click the last point again) to finish.' },
-  { id: 'crossing', label: 'Crossing', icon: 'route', hint: 'Click where the crossing starts and where it ends, then click the last point again.' },
-  { id: 'area', label: 'Area', icon: 'layers', hint: 'Click around the area (field, garden, parking). Click the first point again to finish.' },
+  { id: 'poly', label: 'Building ⬠', icon: 'building', hint: 'Click each corner of the building, then tap Finish (or click the first corner again).' },
+  { id: 'road', label: 'Road', icon: 'route', hint: 'Click along the road, then tap Finish (or double-click).' },
+  { id: 'crossing', label: 'Crossing', icon: 'route', hint: 'Click where the crossing starts and where it ends, then tap Finish.' },
+  { id: 'area', label: 'Area', icon: 'layers', hint: 'Click around the area (field, garden, parking), then tap Finish.' },
 ]
 const tool = ref('select')
 // Street map under the drawing as a tracing guide (admin only; visitors never see it).
@@ -45,12 +45,35 @@ watch(guideOn, (on) => {
 })
 const hint = computed(() => TOOLS.find((t) => t.id === tool.value)?.hint)
 
+// Corner-by-corner tools need a Finish button: double-click / tapping the first point is hard on a phone.
+const multiPoint = computed(() => ['poly', 'area', 'road', 'crossing'].includes(tool.value))
+const drawer = () => map?.pm?.Draw?.[tool.value === 'road' || tool.value === 'crossing' ? 'Line' : 'Polygon']
+function finishDraw() {
+  const d = drawer()
+  const placed = d?._layer?.getLatLngs?.().length || 0
+  const need = tool.value === 'road' || tool.value === 'crossing' ? 2 : 3
+  if (placed < need) return toast.error(`Place at least ${need} points first`)
+  d._finishShape()
+}
+function undoPoint() {
+  const d = drawer()
+  if (d?._layer?.getLatLngs?.().length) d._removeLastVertex()
+}
+
 // What the side panel shows.
 const pending = ref(null) // just drawn: { kind: 'building'|'road'|'crossing'|'area', shapeKind, layer, ... }
 const selected = ref(null) // existing item: { type: 'building'|'feature', id, layer }
 const editMode = ref(null) // 'corners' | 'move' | 'rotate' | null
 const busy = ref(false)
 const form = ref({})
+
+// On phones the side panel sits under the map: bring the Save form into view.
+const panel = ref(null)
+watch([pending, () => selected.value?.id], async ([p, s]) => {
+  if (!p && !s) return
+  await nextTick()
+  if (!window.matchMedia('(min-width: 1280px)').matches) panel.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+})
 
 const unshaped = computed(() => campus.buildings.filter((b) => !b.shape?.points?.length))
 const counts = computed(() => ({
@@ -378,10 +401,14 @@ onBeforeUnmount(() => {
             Street map guide
           </label>
         </div>
-        <div class="flex min-h-[44px] items-center gap-2 border-b border-line bg-primary-50/60 px-3 py-2 text-sm text-primary-700">
+        <div class="flex min-h-[44px] flex-wrap items-center gap-2 border-b border-line bg-primary-50/60 px-3 py-2 text-sm text-primary-700">
           <AppIcon name="info" :size="16" />
-          <span>{{ drawFor ? `Drawing the shape of ${campus.buildingById.get(drawFor)?.name}: ` : '' }}{{ hint }}</span>
-          <UiButton v-if="tool !== 'select'" size="sm" variant="quiet" class="ml-auto" @click="(tool = 'select'), (drawFor = null)">Cancel</UiButton>
+          <span class="min-w-0 flex-1 basis-48">{{ drawFor ? `Drawing the shape of ${campus.buildingById.get(drawFor)?.name}: ` : '' }}{{ hint }}</span>
+          <div v-if="tool !== 'select'" class="ml-auto flex shrink-0 flex-wrap justify-end gap-1">
+            <UiButton v-if="multiPoint" size="sm" variant="quiet" @click="undoPoint">Undo point</UiButton>
+            <UiButton size="sm" variant="quiet" @click="(tool = 'select'), (drawFor = null)">Cancel</UiButton>
+            <UiButton v-if="multiPoint" size="sm" icon="check" @click="finishDraw">Finish</UiButton>
+          </div>
         </div>
         <div class="h-[60dvh] xl:h-[calc(100dvh-240px)] xl:min-h-[520px]" :class="tool !== 'select' ? 'cursor-crosshair' : ''">
           <MapCanvas :buildings="[]" :lock-to-campus="false" :show-features="false" :basemap="guideOn ? 'guide' : 'auto'" @ready="onReady" @map-click="onMapClick" />
@@ -389,10 +416,11 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Side panel -->
-      <aside class="space-y-4">
+      <aside ref="panel" class="scroll-mt-4 space-y-4">
         <!-- Just drawn -->
         <section v-if="pending" class="space-y-4 rounded-xl border-2 border-primary-600/40 bg-surface p-4 shadow-xs">
           <h2 class="text-base font-semibold">{{ pending.kind === 'building' ? 'New building shape' : `New ${pending.kind}` }}</h2>
+          <p class="-mt-2 text-sm text-warning-600">Not saved yet. Fill this in and tap Save.</p>
 
           <template v-if="pending.kind === 'building'">
             <div class="grid grid-cols-2 gap-1 rounded-lg bg-canvas p-1 ring-1 ring-line ring-inset">
