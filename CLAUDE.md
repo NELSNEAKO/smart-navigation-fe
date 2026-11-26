@@ -57,9 +57,10 @@ vercel.json         /api rewrite to Render + SPA fallback
 - MapCanvas moves to the campus first, then locks (`setMaxBounds` before the map is positioned/sized drags the view off-centre).
 
 ## Drawn campus map (no street tiles)
-- Once a campus area is set, every map shows the **drawn campus** (mockup style): green land inside the circle, plain outside, building shapes with names, white walkways (from paths), roads with a dashed centre, zebra crossings, areas. Colours/helpers: `lib/campusStyle.js`. Street tiles only before a campus area exists, and on Admin → Campus (`basemap="street"`) to find the campus.
+- Once a campus area is set, every map shows the **drawn campus** (mockup style): the whole background is campus green (no circle; the view is locked to the campus area), building shapes with names, white walkways (from paths), roads with a dashed centre, zebra crossings, areas. Colours/helpers: `lib/campusStyle.js`. Street tiles only before a campus area exists, and on Admin → Campus (`basemap="street"`) to find the campus.
 - `MapCanvas` panes: `campusBase` (z 250: land, areas, roads, walkways, crossings), overlay (buildings, routes), `campusLabels` (z 450). Ground widths are in metres and redrawn on zoom. Quarter-step zoom so the campus fills the screen.
-- Admin → **Map** (`views/admin/CampusMapView.vue`): Leaflet-Geoman (MIT, pinned 2.20.6) to draw buildings (rectangle = two opposite corners, or corner-by-corner shape), roads, crossings, areas; select to edit corners / move / rotate; new building shapes become a new building or are assigned to an existing one. Geoman is a classic script: import `lib/leafletGlobal.js` before it so maps get `map.pm`.
+- Admin → **Map** (`views/admin/CampusMapView.vue`) has a **Street map guide** toggle (on by default, remembered): `MapCanvas basemap="guide"` draws the campus on top of OpenStreetMap for tracing; shapes are drawn see-through. Visitors never see it.
+- Admin → **Map**: Leaflet-Geoman (MIT, pinned 2.20.6) to draw buildings (rectangle = two opposite corners, or corner-by-corner shape), roads, crossings, areas; select to edit corners / move / rotate; new building shapes become a new building or are assigned to an existing one. Geoman is a classic script: import `lib/leafletGlobal.js` before it so maps get `map.pm`.
 - Live navigation uses `lib/campusMapStyle.js` (a MapLibre style built from the same data: flat buildings, no street tiles; glyphs from OpenFreeMap fonts) when a campus area exists.
 
 ## Key behaviour

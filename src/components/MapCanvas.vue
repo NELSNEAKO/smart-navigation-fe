@@ -25,6 +25,7 @@ const props = defineProps({
   campusArea: { type: Object, default: undefined },
   // 'auto': the drawn campus map once a campus area is set (street map before that).
   // 'street': always OpenStreetMap (e.g. the Campus area screen, to find the campus).
+  // 'guide': the drawn campus on top of the street map, as a tracing guide (Admin → Map).
   basemap: { type: String, default: 'auto' },
   // Draw walkway paths as white walkways (the admin Paths editor draws its own lines instead).
   showWalkways: { type: Boolean, default: true },
@@ -41,6 +42,7 @@ let tiles = null
 const store = useMapStore()
 const area = computed(() => (props.campusArea !== undefined ? props.campusArea : store.campus))
 const drawn = computed(() => props.basemap !== 'street' && !!area.value)
+const guide = computed(() => props.basemap === 'guide')
 
 // Points farther than this from the middle of the data (e.g. a building saved in the
 // wrong city by mistake) are left out, so one bad pin can't zoom the map out to sea.
@@ -101,12 +103,13 @@ function drawMask() {
   layers.mask = L.polyline(ring, { pane: 'campusMask', color: '#1d4ed8', weight: 2, opacity: 0.7, dashArray: '6 6', interactive: false }).addTo(map)
 }
 
-// Street tiles only when not showing the drawn campus map.
+// Street tiles only when not showing the drawn campus map (or as the admin's tracing guide).
+// The drawn map has no circle: the whole background is campus ground.
 function applyBasemap() {
   if (!map) return
-  if (drawn.value) {
+  if (drawn.value && !guide.value) {
     tiles?.remove()
-    el.value.style.background = C.outside
+    el.value.style.background = C.land
   } else {
     if (tiles && !map.hasLayer(tiles)) tiles.addTo(map)
     el.value.style.background = ''
@@ -125,7 +128,6 @@ function drawCampus() {
   const base = { pane: 'campusBase', interactive: false }
   const ll = (pts) => pts.map((p) => [p.lat, p.lng])
 
-  L.polygon(ll(circleRing(area.value)), { ...base, stroke: false, fillColor: C.land, fillOpacity: 1 }).addTo(g)
 
   for (const ft of props.showFeatures ? store.features : []) {
     if (!Array.isArray(ft.points) || ft.points.length < 2) continue
@@ -299,7 +301,7 @@ watch(() => [props.buildings, props.extraPoints], () => {
   drawBuildings()
 })
 watch(() => props.highlightId, drawBuildings)
-watch(drawn, () => {
+watch([drawn, guide], () => {
   applyBasemap()
   drawMask()
   drawCampus()

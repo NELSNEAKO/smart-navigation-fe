@@ -1,6 +1,5 @@
 // MapLibre style for the drawn campus map (no street tiles): land, areas, roads, crossings,
 // walkways and flat building blocks with names. Used by the live navigation screen.
-import { circleRing } from './campusArea'
 import { CAMPUS_COLORS, CAMPUS_COLORS_DARK, WALKWAY_WIDTH_M, DEFAULT_ROAD_WIDTH_M, DEFAULT_CROSSING_WIDTH_M, centroid } from './campusStyle'
 
 const fc = (features) => ({ type: 'FeatureCollection', features })
@@ -29,7 +28,6 @@ export function campusMapStyle({ campus, buildings, features, edges, nodeById },
   const of = (kind) => features.filter((f) => f.kind === kind && Array.isArray(f.points))
 
   const sources = {
-    land: { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring(circleRing(campus))] } } },
     areas: { type: 'geojson', data: fc(of('area').filter((f) => f.points.length >= 3).map((f) => ({ type: 'Feature', properties: { name: f.name || '' }, geometry: { type: 'Polygon', coordinates: [ring(f.points)] } }))) },
     roads: { type: 'geojson', data: fc(of('road').map((f) => ({ type: 'Feature', properties: { widthM: f.widthM || DEFAULT_ROAD_WIDTH_M }, geometry: { type: 'LineString', coordinates: line(f.points) } }))) },
     crossings: { type: 'geojson', data: fc(of('crossing').map((f) => ({ type: 'Feature', properties: { widthM: f.widthM || DEFAULT_CROSSING_WIDTH_M }, geometry: { type: 'LineString', coordinates: line(f.points) } }))) },
@@ -54,8 +52,8 @@ export function campusMapStyle({ campus, buildings, features, edges, nodeById },
     glyphs: 'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf', // free, no key
     sources,
     layers: [
-      { id: 'outside', type: 'background', paint: { 'background-color': P.outside } },
-      { id: 'land', type: 'fill', source: 'land', paint: { 'fill-color': P.land } },
+      // No circle: the whole ground is campus land (the camera is kept on campus by maxBounds).
+      { id: 'ground', type: 'background', paint: { 'background-color': P.land } },
       { id: 'areas', type: 'fill', source: 'areas', paint: { 'fill-color': P.area, 'fill-outline-color': P.areaStroke } },
       { id: 'roads', type: 'line', source: 'roads', layout: butt, paint: { 'line-color': P.road, 'line-width': metres(lat, 'widthM', DEFAULT_ROAD_WIDTH_M) } },
       { id: 'road-center', type: 'line', source: 'roads', layout: butt, paint: { 'line-color': P.roadCenter, 'line-width': 1.5, 'line-dasharray': [4, 3] } },

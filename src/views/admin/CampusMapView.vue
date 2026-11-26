@@ -26,6 +26,23 @@ const TOOLS = [
   { id: 'area', label: 'Area', icon: 'layers', hint: 'Click around the area (field, garden, parking). Click the first point again to finish.' },
 ]
 const tool = ref('select')
+// Street map under the drawing as a tracing guide (admin only; visitors never see it).
+const guideOn = ref(readGuidePref())
+function readGuidePref() {
+  try {
+    return localStorage.getItem('campusnav.mapGuide') !== 'off'
+  } catch {
+    return true
+  }
+}
+watch(guideOn, (on) => {
+  try {
+    localStorage.setItem('campusnav.mapGuide', on ? 'on' : 'off')
+  } catch {
+    /* fine */
+  }
+  draw()
+})
 const hint = computed(() => TOOLS.find((t) => t.id === tool.value)?.hint)
 
 // What the side panel shows.
@@ -67,9 +84,9 @@ const toPoints = (latlngs) => (Array.isArray(latlngs[0]) ? latlngs[0] : latlngs)
 
 function styleFor(kind, f, active) {
   if (kind === 'building') {
-    return { color: active ? C.buildingActiveStroke : C.buildingStroke, weight: active ? 3 : 1.5, fillColor: active ? C.buildingActive : C.building, fillOpacity: 1 }
+    return { color: active ? C.buildingActiveStroke : C.buildingStroke, weight: active ? 3 : 1.5, fillColor: active ? C.buildingActive : C.building, fillOpacity: guideOn.value ? 0.7 : 1 }
   }
-  if (kind === 'area') return { color: active ? C.buildingActiveStroke : C.areaStroke, weight: active ? 3 : 1, fillColor: C.area, fillOpacity: 1 }
+  if (kind === 'area') return { color: active ? C.buildingActiveStroke : C.areaStroke, weight: active ? 3 : 1, fillColor: C.area, fillOpacity: guideOn.value ? 0.55 : 1 }
   const w = px(f?.widthM || (kind === 'road' ? DEFAULT_ROAD_WIDTH_M : DEFAULT_CROSSING_WIDTH_M), kind === 'road' ? 6 : 4)
   if (kind === 'road') return { color: active ? C.buildingActiveStroke : C.road, weight: w, lineCap: 'butt', opacity: 1 }
   return { color: active ? C.buildingActiveStroke : C.crossing, weight: w, dashArray: `${Math.max(3, w * 0.45)} ${Math.max(3, w * 0.45)}`, lineCap: 'butt' }
@@ -356,6 +373,10 @@ onBeforeUnmount(() => {
           >
             <AppIcon :name="t.icon" :size="16" /> {{ t.label }}
           </button>
+          <label class="ml-auto flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-soft hover:bg-canvas" title="Show the street map under your drawing to trace buildings and roads. Visitors never see it.">
+            <input v-model="guideOn" type="checkbox" class="h-4 w-4 accent-primary-600" />
+            Street map guide
+          </label>
         </div>
         <div class="flex min-h-[44px] items-center gap-2 border-b border-line bg-primary-50/60 px-3 py-2 text-sm text-primary-700">
           <AppIcon name="info" :size="16" />
@@ -363,7 +384,7 @@ onBeforeUnmount(() => {
           <UiButton v-if="tool !== 'select'" size="sm" variant="quiet" class="ml-auto" @click="(tool = 'select'), (drawFor = null)">Cancel</UiButton>
         </div>
         <div class="h-[60dvh] xl:h-[calc(100dvh-240px)] xl:min-h-[520px]" :class="tool !== 'select' ? 'cursor-crosshair' : ''">
-          <MapCanvas :buildings="[]" :lock-to-campus="false" :show-features="false" @ready="onReady" @map-click="onMapClick" />
+          <MapCanvas :buildings="[]" :lock-to-campus="false" :show-features="false" :basemap="guideOn ? 'guide' : 'auto'" @ready="onReady" @map-click="onMapClick" />
         </div>
       </div>
 
