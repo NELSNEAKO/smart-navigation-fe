@@ -9,6 +9,7 @@ import { CATEGORIES, categoryById } from '../lib/categories'
 import { distanceBetween, formatDistance } from '../lib/geo'
 import AppIcon from '../components/ui/AppIcon.vue'
 import StartStatus from '../components/StartStatus.vue'
+import CardSlider from '../components/CardSlider.vue'
 
 const map = useMapStore()
 const router = useRouter()
@@ -36,10 +37,11 @@ const usedCategories = computed(() =>
 )
 const categoryBuildings = computed(() => (activeCategory.value ? map.buildings.filter((b) => b.category === activeCategory.value.id) : []))
 
-// Popular = most searched; until there's search data, show the first few buildings.
+// Popular = most searched first, then other buildings so the slider has something to slide.
 const popularBuildings = computed(() => {
   const fromLogs = popular.value.map((p) => map.buildingById.get(p.buildingId)).filter(Boolean)
-  return (fromLogs.length ? fromLogs : map.buildings).slice(0, 6)
+  const rest = map.buildings.filter((b) => !fromLogs.includes(b))
+  return [...fromLogs, ...rest].slice(0, 8)
 })
 
 const events = computed(() => map.events.slice(0, 3))
@@ -209,7 +211,7 @@ function eventWhen(ev) {
           <h2 class="mb-3 flex items-center gap-2 px-1 text-base font-semibold">
             {{ popular.length ? 'Popular places' : 'Places on campus' }}
           </h2>
-          <div class="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
+          <CardSlider :count="popularBuildings.length">
             <button
               v-for="b in popularBuildings"
               :key="b.id"
@@ -228,7 +230,7 @@ function eventWhen(ev) {
                 </span>
               </span>
             </button>
-          </div>
+          </CardSlider>
         </section>
 
         <!-- Events -->
