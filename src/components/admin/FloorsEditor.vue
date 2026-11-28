@@ -32,6 +32,8 @@ const editDraft = ref({})
 const renaming = ref(null)
 const renameValue = ref('')
 const busy = ref(false)
+const photosFor = ref(null) // floor id with its photos panel open
+const floorPhotos = ref([])
 
 const input =
   'block h-10 w-full rounded-md border border-line bg-surface px-3 text-base text-ink placeholder:text-ink-muted focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-100'
@@ -66,6 +68,16 @@ const saveRename = async (floor) => {
   const label = renameValue.value.trim()
   if (label && label !== floor.label) await run(() => admin.update('floors', floor.id, { label }), 'Floor renamed')
   renaming.value = null
+}
+
+function togglePhotos(floor) {
+  if (photosFor.value === floor.id) return (photosFor.value = null)
+  photosFor.value = floor.id
+  floorPhotos.value = [...(floor.photoIds || [])]
+}
+const saveFloorPhotos = async (floor) => {
+  const ok = await run(() => admin.update('floors', floor.id, { photoIds: floorPhotos.value }), 'Floor photos saved')
+  if (ok) photosFor.value = null
 }
 
 const deleteFloor = async (floor) => {
@@ -114,7 +126,10 @@ const deleteRoom = async (room) => {
         </form>
         <template v-else>
           <h4 class="flex-1 text-sm font-semibold text-ink">{{ floor.label }}</h4>
-          <span class="text-xs text-ink-muted">{{ floor.rooms?.length || 0 }} rooms</span>
+          <span class="text-xs text-ink-muted">{{ floor.rooms?.length || 0 }} rooms<template v-if="floor.photoIds?.length"> · {{ floor.photoIds.length }} photo{{ floor.photoIds.length === 1 ? '' : 's' }}</template></span>
+          <button type="button" class="rounded-md p-1.5 hover:bg-surface hover:text-ink" :class="photosFor === floor.id ? 'bg-surface text-primary-600' : 'text-ink-muted'" :aria-label="`Photos of ${floor.label}`" title="Floor photos" @click="togglePhotos(floor)">
+            <AppIcon name="camera" :size="16" />
+          </button>
           <button type="button" class="rounded-md p-1.5 text-ink-muted hover:bg-surface hover:text-ink" :aria-label="`Rename ${floor.label}`" @click="startRename(floor)">
             <AppIcon name="pencil" :size="16" />
           </button>
@@ -122,6 +137,15 @@ const deleteRoom = async (room) => {
             <AppIcon name="trash" :size="16" />
           </button>
         </template>
+      </div>
+
+      <!-- Floor photos (floor plan, hallway…) -->
+      <div v-if="photosFor === floor.id" class="space-y-3 border-b border-line bg-primary-50/40 p-3">
+        <PhotosEditor v-model="floorPhotos" :label="`Photos of ${floor.label} (floor plan, hallway, stairs)`" />
+        <div class="flex justify-end gap-2">
+          <UiButton variant="quiet" size="sm" @click="photosFor = null">Cancel</UiButton>
+          <UiButton size="sm" icon="check" :loading="busy" @click="saveFloorPhotos(floor)">Save photos</UiButton>
+        </div>
       </div>
 
       <!-- Rooms -->

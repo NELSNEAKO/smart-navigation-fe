@@ -120,6 +120,7 @@ function back() {
               <span class="flex items-center gap-2 font-medium"><AppIcon name="layers" :size="16" class="text-ink-muted" />{{ floor.label }}</span>
               <span class="flex items-center gap-2 text-sm text-ink-muted">{{ floor.rooms?.length || 0 }} <AppIcon name="chevron-right" :size="16" class="transition-transform group-open:rotate-90" /></span>
             </summary>
+            <PhotoGallery v-if="floor.photoIds?.length" :photos="photosOf(floor)" :alt="`${floor.label}, ${building.name}`" height-class="h-44" rounded class="mx-5 mb-2" />
             <ul class="pb-2">
               <li v-for="room in floor.rooms" :key="room.id">
                 <button type="button" class="flex w-full items-center gap-3 px-5 py-2 text-left text-sm active:bg-canvas" :class="room.id === roomId ? 'bg-warning-50 font-semibold' : ''" @click="showRoom(room, floor)">
