@@ -68,6 +68,9 @@ export const useMapStore = defineStore('map', () => {
   const manualStart = ref(null) // { lat, lng } chosen by tapping the map (handy for testing off campus)
   const gps = ref(null) // { lat, lng, accuracy }
   const gpsError = ref(null)
+  const gpsErrorCode = ref(null) // 1 blocked, 2 location off / unavailable, 3 timed out
+  // Browser permission for this site: 'granted' | 'prompt' | 'denied' | 'unknown' (no Permissions API, e.g. old iPhones)
+  const locationPermission = ref('unknown')
   let watchId = null
 
   function setManualStart(point) {
@@ -92,28 +95,101 @@ export const useMapStore = defineStore('map', () => {
     }
   }
 
+  function onFix(pos) {
+    gps.value = {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy,
+      heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, // direction of travel, degrees
+      speed: Number.isFinite(pos.coords.speed) ? pos.coords.speed : null, // m/s
+    }
+    gpsError.value = null
+    gpsErrorCode.value = null
+    locationPermission.value = 'granted'
+  }
+  function onGpsError(err) {
+    gpsErrorCode.value = err.code
+    gpsError.value = err.code === 1 ? 'Location is blocked for this site.' : err.code === 2 ? "Your phone's location is turned off." : 'Could not get a GPS signal yet.'
+    if (err.code === 1) locationPermission.value = 'denied'
+    // Stop this watch so the next request starts a fresh one (a blocked watch never recovers).
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+    watchId = null
+  }
+
+  /** Follow the phone's position. Asks for permission if the site doesn't have it yet. */
   function startGps() {
     if (watchId !== null) return
     if (!('geolocation' in navigator)) {
       gpsError.value = 'Location is not available on this device.'
+      gpsErrorCode.value = 2
       return
     }
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        gps.value = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          heading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null, // direction of travel, degrees
-          speed: Number.isFinite(pos.coords.speed) ? pos.coords.speed : null, // m/s
+    watchId = navigator.geolocation.watchPosition(onFix, onGpsError, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 })
+  }
+
+  /**
+   * Called when a visitor page opens: follow the GPS only if the site already has permission,
+   * so visitors are never hit by a location pop-up before they know why (askLocation does that).
+   */
+  let permissionWatched = false
+  async function initLocation() {
+    if (!permissionWatched && navigator.permissions?.query) {
+      permissionWatched = true
+      try {
+        const p = await navigator.permissions.query({ name: 'geolocation' })
+        locationPermission.value = p.state
+        p.onchange = () => {
+          locationPermission.value = p.state
+          if (p.state === 'granted') startGps() // turned on in the browser settings: pick it up at once
         }
-        gpsError.value = null
-      },
-      (err) => {
-        gpsError.value = err.code === 1 ? 'Location permission was denied.' : 'Could not get your location.'
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
-    )
+      } catch {
+        /* Permissions API without geolocation support: stay 'unknown' */
+      }
+    }
+    if (locationPermission.value === 'granted') startGps()
+  }
+
+  /** One location reading now (shows the browser's permission pop-up if needed). Resolves true on success. */
+  function requestFix(timeoutMs = 15000) {
+    if (!('geolocation' in navigator)) {
+      gpsErrorCode.value = 2
+      return Promise.resolve(false)
+    }
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          onFix(pos)
+          startGps() // keep following
+          resolve(true)
+        },
+        (err) => {
+          onGpsError(err)
+          resolve(false)
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: timeoutMs },
+      )
+    })
+  }
+
+  // ---- "Use your location?" sheet (components/LocationSheet.vue, mounted once in App.vue) ----
+  const locationAsk = ref(null) // { resolve } while the sheet is open
+  /**
+   * Make sure we know where the visitor is before navigation.
+   * Resolves 'gps' (we have a fix on campus), 'start' (a QR/tapped start is already set),
+   * 'pick' (they want to tap their start on the map) or 'cancel'.
+   */
+  function askLocation({ allowChosenStart = true } = {}) {
+    if (allowChosenStart && (qrNode.value || manualStart.value)) return Promise.resolve('start')
+    if (gps.value && !gpsOffCampus.value) return Promise.resolve('gps')
+    locationAsk.value?.resolve('cancel')
+    return new Promise((resolve) => {
+      locationAsk.value = {
+        resolve: (r) => {
+          locationAsk.value = null
+          resolve(r)
+        },
+      }
+    })
   }
 
   const qrNode = computed(() => (fromCode.value ? nodes.value.find((n) => n.code === fromCode.value) ?? null : null))
@@ -146,6 +222,8 @@ export const useMapStore = defineStore('map', () => {
 
   // More than 1 km from every building: probably not on campus.
   const offCampus = computed(() => !!nearestBuilding.value && nearestBuilding.value.distance > 1000)
+  // The GPS fix itself (not a chosen start) is more than 1 km from every building.
+  const gpsOffCampus = computed(() => !!gps.value && buildings.value.length > 0 && nearest(buildings.value, gps.value).distance > 1000)
 
   // ---- Destinations ----
   function entrancesOf(buildingId) {
@@ -317,7 +395,8 @@ export const useMapStore = defineStore('map', () => {
     buildings, nodes, edges, campus, features, events, status, error, load,
     nodeById, buildingById,
     fromCode, setFromCode, manualStart, setManualStart, useLiveGps,
-    gps, gpsError, startGps, start, offCampus, nearestBuilding,
+    gps, gpsError, gpsErrorCode, locationPermission, startGps, initLocation, requestFix, locationAsk, askLocation,
+    start, offCampus, gpsOffCampus, nearestBuilding,
     entrancesOf, routeTo, routeFrom, search, findRoom,
   }
 })

@@ -13,7 +13,7 @@ const map = useMapStore()
 const router = useRouter()
 const selected = ref(null)
 
-onMounted(() => map.startGps())
+onMounted(() => map.initLocation())
 
 const here = computed(() => map.start?.point ?? null)
 const selectedDistance = computed(() => (selected.value && here.value ? distanceBetween(here.value, selected.value) : null))

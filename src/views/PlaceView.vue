@@ -7,6 +7,7 @@ import { categoryById } from '../lib/categories'
 import { formatDistance, walkingMinutes } from '../lib/geo'
 import AppIcon from '../components/ui/AppIcon.vue'
 import StartStatus from '../components/StartStatus.vue'
+import { askCompassPermission } from '../composables/useHeading'
 import PhotoGallery from '../components/PhotoGallery.vue'
 import RoomSheet from '../components/RoomSheet.vue'
 import { photosOf } from '../lib/photos'
@@ -14,7 +15,7 @@ import { photosOf } from '../lib/photos'
 const map = useMapStore()
 const route = useRoute()
 const router = useRouter()
-onMounted(() => map.startGps())
+onMounted(() => map.initLocation())
 
 const building = computed(() => map.buildingById.get(route.params.buildingId))
 const category = computed(() => categoryById[building.value?.category])
@@ -34,8 +35,13 @@ const openRoom = ref(null) // { room, floor }
 const showRoom = (room, floor) => (openRoom.value = { room, floor })
 const hasDetails = (room) => !!(room.photoIds?.length || room.description || room.notes)
 
-function start() {
-  router.push({ name: 'route', params: { buildingId: building.value.id }, query: { go: '1', ...(roomId.value ? { room: roomId.value } : {}) } })
+// Ask for the location first (with an explanation), so navigation never sits waiting for GPS.
+async function start() {
+  askCompassPermission() // iPhone: must be asked inside the tap
+  const how = await map.askLocation()
+  if (how === 'cancel') return
+  const room = roomId.value ? { room: roomId.value } : {}
+  router.push({ name: 'route', params: { buildingId: building.value.id }, query: how === 'pick' ? { pick: '1', ...room } : { go: '1', ...room } })
 }
 function preview() {
   router.push({ name: 'route', params: { buildingId: building.value.id }, query: roomId.value ? { room: roomId.value } : {} })

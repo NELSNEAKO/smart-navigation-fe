@@ -68,6 +68,7 @@ vercel.json         /api rewrite to Render + SPA fallback
 ## Key behaviour
 - The client loads `GET /api/map` once. Search (text match), nearest building and Dijkstra all run in the browser.
 - Map: Leaflet + OpenStreetMap tiles, locked to the campus (`maxBounds` from the data, limited zoom). Plan to use a campus image overlay later.
+- **Location permission flow** (`components/LocationSheet.vue`, mounted once in App.vue): visitor pages call `map.initLocation()`, which follows GPS only if the site already has permission (Permissions API), so there is no pop-up on page load. **Start navigation** (PlaceView and RouteView) awaits `map.askLocation()` → `gps` | `start` (QR/tapped start already set) | `pick` (→ `/route/:id?pick=1`, tap your start) | `cancel`. The sheet explains why, then `requestFix()` shows the browser pop-up; outcomes: blocked (code 1), phone location off (code 2, retries every 4 s and when the tab becomes visible again), no signal (code 3), or off campus (>1 km). Steps are tailored for iPhone / Android / computer. `askCompassPermission()` is called before the await (iPhone needs it inside the tap). StartStatus shows a **Turn on** / **Fix** button that opens the same sheet.
 - Start location: GPS dot, or `?from=<node code>` from a QR code (remembered for the visit in sessionStorage). QR wins over GPS.
 - GPS gives the building only. Floors and rooms are text the admin types in. Never claim indoor positioning.
 - Admin "Use my current location" uses `navigator.geolocation`, plus a draggable pin to fine-tune.

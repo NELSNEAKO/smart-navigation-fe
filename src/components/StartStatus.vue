@@ -14,7 +14,8 @@ const status = computed(() => {
     if (map.offCampus) return { tone: 'amber', text: `You seem to be off campus${acc}. Tap the map to choose a start.` }
     return { tone: 'blue', text: `Using your GPS location${acc}` }
   }
-  if (map.gpsError) return { tone: 'amber', text: `${map.gpsError} Scan a QR code or tap the map to choose a start.` }
+  if (map.gpsError) return { tone: 'amber', text: map.gpsError, action: 'Fix' }
+  if (map.locationPermission !== 'granted') return { tone: 'slate', text: 'Location is not turned on', action: 'Turn on' }
   return { tone: 'slate', text: 'Finding your location…' }
 })
 
@@ -32,5 +33,6 @@ const tones = {
   <div class="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium shadow-sm ring-1" :class="tones[status.tone]">
     <span class="truncate">{{ status.text }}</span>
     <button v-if="canUseGps" type="button" class="ml-auto shrink-0 underline" @click="map.useLiveGps()">Use GPS</button>
+    <button v-else-if="status.action" type="button" class="ml-auto shrink-0 font-semibold underline" @click="map.askLocation({ allowChosenStart: false })">{{ status.action }}</button>
   </div>
 </template>

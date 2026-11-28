@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMapStore } from '../stores/map'
 import { formatDistance, walkingMinutes } from '../lib/geo'
@@ -14,7 +14,7 @@ const map = useMapStore()
 const route = useRoute()
 const router = useRouter()
 
-onMounted(() => map.startGps())
+onMounted(() => map.initLocation())
 
 const buildingId = computed(() => route.params.buildingId)
 const building = computed(() => map.buildingById.get(buildingId.value))
@@ -26,7 +26,7 @@ const ok = computed(() => result.value && !result.value.error)
 const namedPoints = computed(() => map.nodes.filter((n) => n.code).sort((a, b) => (a.label || a.code).localeCompare(b.label || b.code)))
 
 // ---- Choosing a start by tapping the map ----
-const picking = ref(false)
+const picking = ref(route.query.pick === '1') // from the location sheet: "Choose my start on the map"
 const needsStart = computed(() => result.value?.error === 'no-start')
 function onMapClick(p) {
   if (picking.value || needsStart.value) {
@@ -39,11 +39,21 @@ function onMapClick(p) {
 const navigating = ref(false)
 const liveGps = computed(() => (map.gps && !map.offCampus ? map.gps : null))
 
-function startNavigation() {
-  if (!ok.value) return
+async function startNavigation() {
   askCompassPermission() // iPhone: must be asked inside this tap
+  // No location yet (or it's off): ask with an explanation instead of waiting silently.
+  const how = await map.askLocation()
+  if (how === 'cancel') return
+  if (how === 'pick') return (picking.value = true)
+  await nextTick()
+  if (!ok.value) return
   if (liveGps.value && map.start?.source !== 'gps') map.useLiveGps() // follow the phone, not the old start
   navigating.value = true
+}
+async function useMyLocation() {
+  const how = await map.askLocation({ allowChosenStart: false })
+  if (how === 'pick') picking.value = true
+  else if (how === 'gps') map.useLiveGps()
 }
 function stopNavigation() {
   navigating.value = false
@@ -55,11 +65,15 @@ function arrive() {
   router.replace({ name: 'arrived', params: { buildingId: buildingId.value }, query: arrivedQuery.value })
 }
 
-// "Start navigation" on the destination page opens this page with ?go=1.
+// "Start navigation" on the destination page opens this page with ?go=1 (location already sorted there).
+let autoStarted = false
 watch(
-  ok,
-  (isOk) => {
-    if (isOk && route.query.go === '1' && !navigating.value) startNavigation()
+  () => map.status === 'ready',
+  (ready) => {
+    if (ready && route.query.go === '1' && !autoStarted && !navigating.value) {
+      autoStarted = true
+      startNavigation()
+    }
   },
   { immediate: true },
 )
@@ -119,7 +133,8 @@ watch(
 
         <!-- No start yet -->
         <div v-if="needsStart" class="mt-4 space-y-2">
-          <p class="text-sm text-slate-600">Turn on location, scan a campus QR code, or tap the map where you are.</p>
+          <button type="button" class="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 py-3 font-semibold text-white active:bg-blue-800" @click="useMyLocation">Use my location</button>
+          <p class="text-center text-sm text-slate-600">or tap the map where you are now</p>
           <select
             v-if="namedPoints.length"
             class="w-full rounded-xl border border-slate-300 bg-white p-3"

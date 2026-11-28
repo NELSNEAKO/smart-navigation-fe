@@ -20,7 +20,7 @@ const activeCategory = ref(null)
 const popular = ref([])
 
 onMounted(async () => {
-  map.startGps()
+  map.initLocation() // follows GPS only if already allowed; we ask at Start navigation
   popular.value = await getPopular()
 })
 
