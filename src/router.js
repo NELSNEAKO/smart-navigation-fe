@@ -26,6 +26,7 @@ const routes = [
       { path: 'nodes', name: 'admin-nodes', component: () => import('./views/admin/NodesView.vue') },
       { path: 'events', name: 'admin-events', component: () => import('./views/admin/EventsView.vue') },
       { path: 'reports', name: 'admin-reports', component: () => import('./views/admin/ReportsView.vue') },
+      { path: 'settings', name: 'admin-settings', component: () => import('./views/admin/SettingsView.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

@@ -21,6 +21,8 @@ const links = [
   { to: '/admin/events', label: 'Events', icon: 'calendar' },
   { to: '/admin/reports', label: 'Reports', icon: 'chart' },
 ]
+// Sidebar only; on phones Settings is a gear in the top bar (the bottom tabs are full).
+const sideLinks = [...links, { to: '/admin/settings', label: 'Settings', icon: 'settings' }]
 const initial = computed(() => (auth.email || 'A').charAt(0).toUpperCase())
 
 function logout() {
@@ -43,7 +45,7 @@ function logout() {
 
       <nav class="flex-1 space-y-1 px-3" aria-label="Admin">
         <RouterLink
-          v-for="l in links"
+          v-for="l in sideLinks"
           :key="l.to"
           :to="l.to"
           class="flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-canvas hover:text-ink"
@@ -78,10 +80,15 @@ function logout() {
           <span class="block text-xs text-ink-muted">Admin console</span>
         </span>
       </div>
-      <button type="button" class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-soft hover:bg-canvas" @click="logout">
-        <AppIcon name="logout" :size="18" />
-        Log out
-      </button>
+      <div class="flex items-center gap-1">
+        <RouterLink to="/admin/settings" class="rounded-lg p-2 text-ink-soft hover:bg-canvas" active-class="!bg-primary-50 !text-primary-600" aria-label="Settings" title="Settings">
+          <AppIcon name="settings" :size="20" />
+        </RouterLink>
+        <button type="button" class="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-soft hover:bg-canvas" @click="logout">
+          <AppIcon name="logout" :size="18" />
+          Log out
+        </button>
+      </div>
     </header>
 
     <!-- Page -->
