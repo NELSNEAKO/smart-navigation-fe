@@ -14,7 +14,7 @@ Budget is zero: free tiers only, no paid map API, no AI features. Routing is a p
 Live: frontend https://smart-navigation-fe-tau.vercel.app · backend https://smart-navigation-be.onrender.com
 - All calls go to `API_BASE` in `src/lib/api.js`: relative `/api` by default.
 - **`npm run dev`:** Vite proxies `/api` to your local backend, `http://localhost:3001` (run `npm run dev` in `smart-navigation-be`).
-- **`npm run dev:live`:** Vite proxies `/api` to the deployed Render backend (`.env.live`). Use it to test the frontend on your PC against live data.
+- **`npm run dev:live`:** Vite proxies `/api` to the deployed Render backend (address in `vite.config.js`; no env files are committed). Use it to test the frontend on your PC against live data.
 - **On Vercel:** `vercel.json` rewrites `/api/:path*` to the Render service. Same origin for the browser, so no CORS.
 - `VITE_API_URL` (optional, see `.env.example`) makes the browser call a backend directly; that backend then needs `CORS_ORIGIN`.
 - **`/status` page:** checks frontend → backend → database on any environment and shows the reason if one link fails.

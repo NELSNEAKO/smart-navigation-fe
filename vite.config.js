@@ -7,8 +7,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   // Where the dev server forwards /api:
   //   npm run dev       -> your local backend (http://localhost:3001)
-  //   npm run dev:live  -> the deployed Render backend (see .env.live)
-  const apiTarget = env.VITE_PROXY_TARGET || 'http://localhost:3001'
+  //   npm run dev:live  -> the deployed Render backend (public address, no secret)
+  // VITE_PROXY_TARGET in a local, git-ignored .env.local overrides both.
+  const RENDER_API = 'https://smart-navigation-be.onrender.com'
+  const apiTarget = env.VITE_PROXY_TARGET || (mode === 'live' ? RENDER_API : 'http://localhost:3001')
 
   return {
   plugins: [
