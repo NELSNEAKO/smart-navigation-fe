@@ -46,6 +46,8 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
 
 // ---- Public ----
 export const getMap = () => request('/map')
+/** Address of an uploaded photo (served by the backend, cached for a year). */
+export const photoSrc = (id) => `${API_BASE}/photos/${id}`
 /** Backend + database status, used by the /status page. */
 export const getHealth = () =>
   fetch(`${API_BASE}/health?db=1`).then(async (r) => ({ httpStatus: r.status, ...(await r.json().catch(() => ({}))) }))
@@ -73,4 +75,19 @@ export const admin = {
   createPath: (points) => request('/paths', { method: 'POST', body: { points }, auth: true }),
   /** Undo: delete these paths and points in one request. */
   deletePath: ({ nodeIds = [], edgeIds = [] }) => request('/paths/delete', { method: 'POST', body: { nodeIds, edgeIds }, auth: true }),
+  /** Upload a photo (a Blob, already shrunk): returns { id, size }. */
+  uploadPhoto: async (blob) => {
+    let res
+    try {
+      res = await fetch(`${API_BASE}/photos`, { method: 'POST', headers: { 'Content-Type': blob.type, Authorization: `Bearer ${token}` }, body: blob })
+    } catch {
+      throw new ApiError(0, 'You appear to be offline.')
+    }
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      if (res.status === 401) onUnauthorized()
+      throw new ApiError(res.status, data.error || `Upload failed (${res.status})`)
+    }
+    return data
+  },
 }

@@ -10,6 +10,7 @@ import { distanceBetween, formatDistance } from '../lib/geo'
 import AppIcon from '../components/ui/AppIcon.vue'
 import StartStatus from '../components/StartStatus.vue'
 import CardSlider from '../components/CardSlider.vue'
+import { coverOf } from '../lib/photos'
 
 const map = useMapStore()
 const router = useRouter()
@@ -175,7 +176,7 @@ function eventWhen(ev) {
         <ul class="divide-y divide-line overflow-hidden rounded-2xl bg-surface ring-1 ring-line">
           <li v-for="b in categoryBuildings" :key="b.id">
             <button type="button" class="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-canvas" @click="openBuilding(b.id)">
-              <img v-if="b.photoUrl" :src="b.photoUrl" alt="" class="h-12 w-12 shrink-0 rounded-xl object-cover" />
+              <img v-if="coverOf(b)" :src="coverOf(b)" alt="" class="h-12 w-12 shrink-0 rounded-xl object-cover" />
               <span v-else class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600"><AppIcon :name="activeCategory.icon" :size="22" /></span>
               <span class="min-w-0 flex-1">
                 <span class="block truncate font-medium">{{ b.name }}</span>
@@ -219,7 +220,7 @@ function eventWhen(ev) {
               class="w-40 shrink-0 snap-start overflow-hidden rounded-2xl bg-surface text-left ring-1 ring-line active:bg-canvas"
               @click="openBuilding(b.id)"
             >
-              <img v-if="b.photoUrl" :src="b.photoUrl" alt="" class="h-24 w-full object-cover" />
+              <img v-if="coverOf(b)" :src="coverOf(b)" alt="" class="h-24 w-full object-cover" />
               <span v-else class="flex h-24 w-full items-center justify-center bg-primary-50 text-primary-600">
                 <AppIcon :name="categoryById[b.category]?.icon || 'building'" :size="30" />
               </span>

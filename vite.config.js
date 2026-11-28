@@ -44,6 +44,16 @@ export default defineConfig(({ mode }) => {
             },
           },
           {
+            // Building and room photos never change (a new upload gets a new id): keep them.
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/photos/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'campus-photos',
+              expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/,
             handler: 'CacheFirst',
             options: {

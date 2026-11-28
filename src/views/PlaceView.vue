@@ -1,12 +1,15 @@
 <script setup>
 // Destination card: what the building is, how far, what's inside, and a big Start button.
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMapStore } from '../stores/map'
 import { categoryById } from '../lib/categories'
 import { formatDistance, walkingMinutes } from '../lib/geo'
 import AppIcon from '../components/ui/AppIcon.vue'
 import StartStatus from '../components/StartStatus.vue'
+import PhotoGallery from '../components/PhotoGallery.vue'
+import RoomSheet from '../components/RoomSheet.vue'
+import { photosOf } from '../lib/photos'
 
 const map = useMapStore()
 const route = useRoute()
@@ -24,6 +27,12 @@ const trip = computed(() => {
 })
 const roomCount = computed(() => (building.value?.floors ?? []).reduce((n, f) => n + (f.rooms?.length ?? 0), 0))
 const typeLabel = { classroom: 'Classroom', office: 'Office', restroom: 'Restroom', lab: 'Laboratory' }
+const photos = computed(() => photosOf(building.value))
+
+// Room details sheet
+const openRoom = ref(null) // { room, floor }
+const showRoom = (room, floor) => (openRoom.value = { room, floor })
+const hasDetails = (room) => !!(room.photoIds?.length || room.description || room.notes)
 
 function start() {
   router.push({ name: 'route', params: { buildingId: building.value.id }, query: { go: '1', ...(roomId.value ? { room: roomId.value } : {}) } })
@@ -51,7 +60,7 @@ function back() {
     <template v-else>
       <!-- Hero -->
       <div class="relative">
-        <img v-if="building.photoUrl" :src="building.photoUrl" :alt="building.name" class="h-56 w-full object-cover" />
+        <PhotoGallery v-if="photos.length" :photos="photos" :alt="building.name" height-class="h-64" />
         <div v-else class="flex h-44 w-full items-center justify-center bg-primary-700 text-white/90">
           <AppIcon :name="category?.icon || 'building'" :size="56" />
         </div>
@@ -71,7 +80,7 @@ function back() {
             <AppIcon :name="category.icon" :size="14" />{{ category.label }}
           </span>
           <h1 class="mt-2 text-2xl font-semibold tracking-tight">{{ building.name }}</h1>
-          <p v-if="building.description" class="mt-1 text-ink-soft">{{ building.description }}</p>
+          <p v-if="building.description" class="mt-1 whitespace-pre-line text-ink-soft">{{ building.description }}</p>
 
           <!-- Room you searched for -->
           <div v-if="roomInfo" class="mt-4 flex gap-3 rounded-xl bg-warning-50 p-3 ring-1 ring-warning-600/20">
@@ -79,6 +88,9 @@ function back() {
             <p class="text-sm">
               <b class="font-semibold">{{ roomInfo.room.name }}</b> is on the <b class="font-semibold">{{ roomInfo.floor.label }}</b>.
               <span v-if="roomInfo.room.notes" class="text-ink-soft">{{ roomInfo.room.notes }}</span>
+              <button v-if="hasDetails(roomInfo.room)" type="button" class="mt-1 flex items-center gap-1 font-semibold text-primary-600" @click="showRoom(roomInfo.room, roomInfo.floor)">
+                <AppIcon :name="roomInfo.room.photoIds?.length ? 'image' : 'info'" :size="16" /> See room details
+              </button>
             </p>
           </div>
 
@@ -109,17 +121,26 @@ function back() {
               <span class="flex items-center gap-2 text-sm text-ink-muted">{{ floor.rooms?.length || 0 }} <AppIcon name="chevron-right" :size="16" class="transition-transform group-open:rotate-90" /></span>
             </summary>
             <ul class="pb-2">
-              <li v-for="room in floor.rooms" :key="room.id" class="flex items-center justify-between px-5 py-2 text-sm" :class="room.id === roomId ? 'bg-warning-50 font-semibold' : ''">
-                <span>{{ room.name }}</span>
-                <span class="text-ink-muted">{{ typeLabel[room.type] }}</span>
+              <li v-for="room in floor.rooms" :key="room.id">
+                <button type="button" class="flex w-full items-center gap-3 px-5 py-2 text-left text-sm active:bg-canvas" :class="room.id === roomId ? 'bg-warning-50 font-semibold' : ''" @click="showRoom(room, floor)">
+                  <img v-if="room.photoIds?.length" :src="photosOf(room)[0]" alt="" class="h-9 w-9 shrink-0 rounded-md object-cover" loading="lazy" />
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate">{{ room.name }}</span>
+                    <span v-if="room.description" class="block truncate text-xs font-normal text-ink-muted">{{ room.description }}</span>
+                  </span>
+                  <span class="shrink-0 text-ink-muted">{{ typeLabel[room.type] }}</span>
+                  <AppIcon name="chevron-right" :size="16" class="shrink-0 text-ink-muted" />
+                </button>
               </li>
               <li v-if="!floor.rooms?.length" class="px-5 py-2 text-sm text-ink-muted">No rooms listed.</li>
             </ul>
           </details>
         </section>
 
-        <p class="mt-4 px-1 text-xs text-ink-muted">Directions take you to the building entrance. Floors and rooms are listed by the campus admin.</p>
+        <p class="mt-4 px-1 text-xs text-ink-muted">Directions take you to the building entrance. Tap a room to see its photos and details.</p>
       </div>
+
+      <RoomSheet :room="openRoom?.room" :floor="openRoom?.floor" :building-name="building.name" @close="openRoom = null" />
 
       <!-- Sticky actions -->
       <div class="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-surface/95 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur">

@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { coverOf } from '../lib/photos'
 import { useRoute } from 'vue-router'
 import { useMapStore } from '../stores/map'
 
@@ -28,7 +29,7 @@ const typeLabel = { classroom: 'Classroom', office: 'Office', restroom: 'Restroo
         </p>
       </div>
 
-      <img v-if="building.photoUrl" :src="building.photoUrl" :alt="building.name" class="mt-4 h-40 w-full rounded-2xl object-cover" />
+      <img v-if="coverOf(building)" :src="coverOf(building)" :alt="building.name" class="mt-4 h-40 w-full rounded-2xl object-cover" />
       <p v-if="building.description" class="mt-4 text-slate-700">{{ building.description }}</p>
 
       <h2 class="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">Floors and rooms</h2>

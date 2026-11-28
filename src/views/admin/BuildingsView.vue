@@ -18,6 +18,8 @@ const categoryOptions = [{ value: '', label: 'No category' }, ...CATEGORIES.map(
 import LocationPicker from '../../components/admin/LocationPicker.vue'
 import FloorsEditor from '../../components/admin/FloorsEditor.vue'
 import EntrancesEditor from '../../components/admin/EntrancesEditor.vue'
+import PhotosEditor from '../../components/admin/PhotosEditor.vue'
+import { coverOf } from '../../lib/photos'
 
 const campus = useMapStore()
 const route = useRoute()
@@ -31,7 +33,7 @@ const errors = ref({})
 const saving = ref(false)
 
 function blank() {
-  return { name: '', description: '', category: '', photoUrl: '', location: null }
+  return { name: '', description: '', category: '', photoIds: [], location: null }
 }
 
 const health = computed(() => campusHealth(campus))
@@ -60,7 +62,7 @@ function openNew() {
 function openEdit(b, startTab = 'details') {
   editingId.value = b.id
   tab.value = startTab
-  form.value = { name: b.name, description: b.description || '', category: b.category || '', photoUrl: b.photoUrl || '', location: { lat: b.lat, lng: b.lng } }
+  form.value = { name: b.name, description: b.description || '', category: b.category || '', photoIds: [...(b.photoIds || [])], location: { lat: b.lat, lng: b.lng } }
   errors.value = {}
 }
 
@@ -83,7 +85,6 @@ function validate() {
   const e = {}
   if (!form.value.name.trim()) e.name = 'Give the building a name.'
   if (!form.value.location) e.location = 'Set the building location on the map.'
-  if (form.value.photoUrl && !/^https?:\/\//.test(form.value.photoUrl)) e.photoUrl = 'Use a full link starting with https://'
   errors.value = e
   return !Object.keys(e).length
 }
@@ -94,7 +95,7 @@ async function save() {
   const data = {
     name: form.value.name,
     description: form.value.description,
-    photoUrl: form.value.photoUrl,
+    photoIds: form.value.photoIds,
     category: form.value.category || null,
     lat: form.value.location.lat,
     lng: form.value.location.lng,
@@ -187,7 +188,7 @@ async function remove(b) {
             <tr v-for="b in filtered" :key="b.id" class="cursor-pointer hover:bg-canvas" @click="openEdit(b)">
               <td class="px-4 py-3">
                 <div class="flex items-center gap-3">
-                  <img v-if="b.photoUrl" :src="b.photoUrl" alt="" class="h-9 w-9 rounded-lg object-cover" />
+                  <img v-if="coverOf(b)" :src="coverOf(b)" alt="" class="h-9 w-9 rounded-lg object-cover" loading="lazy" />
                   <span v-else class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-50 text-primary-600"><AppIcon name="building" :size="18" /></span>
                   <div class="min-w-0">
                     <p class="truncate font-medium text-ink">{{ b.name }}</p>
@@ -223,7 +224,8 @@ async function remove(b) {
         <ul class="divide-y divide-line md:hidden">
           <li v-for="b in filtered" :key="b.id">
             <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-canvas" @click="openEdit(b)">
-              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600"><AppIcon name="building" :size="20" /></span>
+              <img v-if="coverOf(b)" :src="coverOf(b)" alt="" class="h-10 w-10 shrink-0 rounded-lg object-cover" loading="lazy" />
+              <span v-else class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600"><AppIcon name="building" :size="20" /></span>
               <span class="min-w-0 flex-1">
                 <span class="block truncate font-medium text-ink">{{ b.name }}</span>
                 <span class="block text-xs text-ink-muted">{{ health.perBuilding.get(b.id)?.floors ?? 0 }} floors · {{ health.perBuilding.get(b.id)?.rooms ?? 0 }} rooms</span>
@@ -259,9 +261,9 @@ async function remove(b) {
 
       <form v-show="tab === 'details' || !current" id="building-form" class="space-y-5" novalidate @submit.prevent="save">
         <UiField v-model="form.name" label="Building name" required maxlength="120" placeholder="e.g. Science Building" :error="errors.name" />
-        <UiField v-model="form.description" as="textarea" label="Description" rows="2" maxlength="2000" placeholder="What's inside, which offices are here…" hint="Shown to visitors when they tap the building." />
+        <UiField v-model="form.description" as="textarea" label="Description" rows="3" maxlength="2000" placeholder="What's inside, which offices are here, opening hours…" hint="Shown to visitors on the building's page." />
         <UiField v-model="form.category" as="select" label="Category" :options="categoryOptions" hint="Visitors can browse buildings by category on the home screen." />
-        <UiField v-model="form.photoUrl" type="url" label="Photo link" placeholder="https://…" hint="Optional. A photo helps visitors recognise the building." :error="errors.photoUrl" />
+        <PhotosEditor v-model="form.photoIds" label="Photos" />
         <div>
           <p class="mb-1.5 text-sm font-medium text-ink-soft">Location <span class="text-danger-600">*</span></p>
           <LocationPicker v-model="form.location" :exclude-id="current?.id" />

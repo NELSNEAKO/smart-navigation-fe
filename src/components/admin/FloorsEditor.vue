@@ -6,6 +6,8 @@ import { toast, confirmAction } from '../../lib/feedback'
 import AppIcon from '../ui/AppIcon.vue'
 import UiButton from '../ui/UiButton.vue'
 import UiBadge from '../ui/UiBadge.vue'
+import PhotosEditor from './PhotosEditor.vue'
+import { coverOf } from '../../lib/photos'
 
 const props = defineProps({
   building: { type: Object, required: true },
@@ -23,7 +25,8 @@ const typeTone = { classroom: 'primary', office: 'neutral', lab: 'success', rest
 
 const newFloor = ref('')
 const addingRoomTo = ref(null) // floor id with the "add room" form open
-const draft = ref({ name: '', type: 'classroom', notes: '' })
+const blankRoom = (type = 'classroom') => ({ name: '', type, notes: '', description: '', photoIds: [] })
+const draft = ref(blankRoom())
 const editingRoom = ref(null)
 const editDraft = ref({})
 const renaming = ref(null)
@@ -75,16 +78,16 @@ const deleteFloor = async (floor) => {
 
 function openAddRoom(floor) {
   addingRoomTo.value = floor.id
-  draft.value = { name: '', type: 'classroom', notes: '' }
+  draft.value = blankRoom()
 }
 const addRoom = async (floor) => {
   const ok = await run(() => admin.create('rooms', { floorId: floor.id, ...draft.value }), `${draft.value.name} added`)
-  if (ok) draft.value = { name: '', type: draft.value.type, notes: '' } // keep the form open for the next room
+  if (ok) draft.value = blankRoom(draft.value.type) // keep the form open for the next room
 }
 
 function startEdit(room) {
   editingRoom.value = room.id
-  editDraft.value = { name: room.name, type: room.type, notes: room.notes || '' }
+  editDraft.value = { name: room.name, type: room.type, notes: room.notes || '', description: room.description || '', photoIds: [...(room.photoIds || [])] }
 }
 const saveRoom = async (room) => {
   const ok = await run(() => admin.update('rooms', room.id, editDraft.value), 'Room saved')
@@ -131,16 +134,20 @@ const deleteRoom = async (room) => {
                 <option v-for="t in ROOM_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
               </select>
             </div>
-            <input v-model="editDraft.notes" :class="input" placeholder="Notes, e.g. Beside the stairs" aria-label="Notes" />
+            <input v-model="editDraft.notes" :class="input" placeholder="How to find it, e.g. Left stairs, beside the restroom" aria-label="How to find it" />
+            <textarea v-model="editDraft.description" :class="[input, 'h-auto py-2']" rows="2" maxlength="2000" placeholder="Description, e.g. Computer lab with 40 PCs and a projector" aria-label="Description" />
+            <PhotosEditor v-model="editDraft.photoIds" label="Room photos" />
             <div class="flex justify-end gap-2">
               <UiButton variant="quiet" size="sm" @click="editingRoom = null">Cancel</UiButton>
               <UiButton size="sm" type="submit" :loading="busy">Save room</UiButton>
             </div>
           </form>
           <div v-else class="flex items-center gap-2">
+            <img v-if="coverOf(room)" :src="coverOf(room)" alt="" class="h-9 w-9 shrink-0 rounded-md object-cover" loading="lazy" />
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium text-ink">{{ room.name }}</p>
-              <p v-if="room.notes" class="truncate text-xs text-ink-muted">{{ room.notes }}</p>
+              <p v-if="room.notes || room.description" class="truncate text-xs text-ink-muted">{{ room.notes || room.description }}</p>
+              <p v-if="room.photoIds?.length" class="text-xs text-ink-muted">{{ room.photoIds.length }} photo{{ room.photoIds.length === 1 ? '' : 's' }}</p>
             </div>
             <UiBadge :tone="typeTone[room.type]">{{ typeLabel[room.type] }}</UiBadge>
             <button type="button" class="rounded-md p-1.5 text-ink-muted hover:bg-canvas hover:text-ink" :aria-label="`Edit ${room.name}`" @click="startEdit(room)">
@@ -161,7 +168,9 @@ const deleteRoom = async (room) => {
             <option v-for="t in ROOM_TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
           </select>
         </div>
-        <input v-model="draft.notes" :class="input" placeholder="Notes (optional)" aria-label="New room notes" />
+        <input v-model="draft.notes" :class="input" placeholder="How to find it (optional)" aria-label="How to find the new room" />
+        <textarea v-model="draft.description" :class="[input, 'h-auto py-2']" rows="2" maxlength="2000" placeholder="Description (optional)" aria-label="New room description" />
+        <PhotosEditor v-model="draft.photoIds" label="Room photos (optional)" />
         <div class="flex justify-end gap-2">
           <UiButton variant="quiet" size="sm" @click="addingRoomTo = null">Done</UiButton>
           <UiButton size="sm" type="submit" icon="plus" :loading="busy">Add room</UiButton>

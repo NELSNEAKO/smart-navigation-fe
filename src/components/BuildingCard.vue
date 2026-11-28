@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import { coverOf } from '../lib/photos'
 
 const props = defineProps({
   building: { type: Object, required: true },
@@ -12,7 +13,7 @@ const roomCount = computed(() => (props.building.floors ?? []).reduce((n, f) => 
 
 <template>
   <article class="overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200">
-    <img v-if="building.photoUrl" :src="building.photoUrl" :alt="building.name" class="h-32 w-full object-cover" loading="lazy" />
+    <img v-if="coverOf(building)" :src="coverOf(building)" :alt="building.name" class="h-32 w-full object-cover" loading="lazy" />
     <div class="p-4">
       <div class="flex items-start justify-between gap-3">
         <div>

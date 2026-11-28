@@ -49,6 +49,8 @@ vercel.json         /api rewrite to Render + SPA fallback
   - Store: `routeFrom(point, buildingId)` reroutes from any position; `gps` also has `heading` and `speed`.
   - MapLibre sets `position: relative` on its container, so the map div must fill a positioned wrapper.
   - Dev hooks: `window.__navDebug.gps(lat, lng, acc, heading, speed)`, `window.__navMap`.
+- **Photos:** `lib/photos.js` (`shrinkImage` → 1280 px JPEG in the browser, `photosOf` / `coverOf` for display; old `photoUrl` links still show). Admin: `components/admin/PhotosEditor.vue` (v-model photo ids; camera or gallery, remove, Cover) in the building Details tab and the room forms (rooms also have **description** and notes = "How to find it"). Visitor: `components/PhotoGallery.vue` (swipe, dots, full-screen viewer) on PlaceView, and `components/RoomSheet.vue` (tap a room: photos, description, how to find it). The service worker keeps `/api/photos/*` (CacheFirst).
+- Home "Popular places" uses `components/CardSlider.vue` (swipe, mouse drag, arrows from `sm`, dots per slide position).
 - Categories: `src/lib/categories.js` (ids match the backend list); search also matches category names.
 
 ## Campus area
