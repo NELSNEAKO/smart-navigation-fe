@@ -2,7 +2,7 @@
 // Settings: the campus QR code. Scanning it only opens this website (the home screen);
 // the visitor's location comes from phone GPS, not from the QR code.
 import { computed, ref, watch } from 'vue'
-import QRCode from 'qrcode'
+import { qrSvg, qrPng, bannerPng } from '../../lib/qrPoster'
 import { toast } from '../../lib/feedback'
 import AppIcon from '../../components/ui/AppIcon.vue'
 import PageHeader from '../../components/ui/PageHeader.vue'
@@ -51,14 +51,14 @@ const urlError = computed(() => {
 })
 const shortUrl = computed(() => form.value.url.replace(/^https?:\/\//, '').replace(/\/$/, ''))
 
-// QR options: medium error correction survives smudges and small damage on a printed poster.
-const QR = { errorCorrectionLevel: 'M', margin: 2, color: { dark: '#0f172a', light: '#ffffff' } }
+// Print quality (high error correction, pure black, standard white border): see lib/qrPoster.js.
 const svg = ref('')
+const busy = ref('')
 watch(
   () => form.value.url,
   async (url) => {
     if (urlError.value) return (svg.value = '')
-    svg.value = await QRCode.toString(url, { ...QR, type: 'svg' })
+    svg.value = await qrSvg(url)
   },
   { immediate: true },
 )
@@ -70,15 +70,32 @@ function save(blob, name) {
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
-async function downloadPng() {
-  const dataUrl = await QRCode.toDataURL(form.value.url, { ...QR, width: 1200 })
-  save(await (await fetch(dataUrl)).blob(), 'campus-qr-code.png')
-  toast('QR code downloaded (PNG)')
+async function task(name, fn) {
+  busy.value = name
+  try {
+    await fn()
+  } catch (e) {
+    toast.error(e.message)
+  } finally {
+    busy.value = ''
+  }
 }
+const downloadPng = (px, name) =>
+  task(name, async () => {
+    save(await qrPng(form.value.url, px), `campus-qr-code-${px}px.png`)
+    toast(`QR code downloaded (${px} × ${px} px)`)
+  })
 function downloadSvg() {
   save(new Blob([svg.value], { type: 'image/svg+xml' }), 'campus-qr-code.svg')
-  toast('QR code downloaded (SVG). Best for large banners.')
+  toast('QR code downloaded (SVG). Stays sharp at any size.')
 }
+const downloadBanner = () =>
+  task('banner', async () => {
+    const data = { ...form.value, shortUrl: shortUrl.value }
+    const blob = await bannerPng(data, 3600).catch(() => bannerPng(data, 2400)) // phones have a canvas size limit
+    save(blob, 'campus-qr-banner.png')
+    toast('Banner design downloaded (2 × 3 ft at 150 dpi)')
+  })
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
 function printPoster() {
@@ -139,18 +156,28 @@ function reset() {
           <UiField v-model="form.subtitle" label="Poster subtitle" maxlength="90" />
           <UiField v-model="form.footer" label="Bottom line (campus or school name)" maxlength="80" />
 
-          <div class="flex flex-wrap gap-2 border-t border-line pt-4">
-            <UiButton icon="printer" :disabled="!svg" @click="printPoster">Print poster (A4)</UiButton>
-            <UiButton variant="secondary" icon="download" :disabled="!svg" @click="downloadPng">Download PNG</UiButton>
-            <UiButton variant="secondary" icon="download" :disabled="!svg" @click="downloadSvg">Download SVG</UiButton>
+          <div class="space-y-3 border-t border-line pt-4">
+            <p class="text-sm font-semibold text-ink">For a banner or tarpaulin</p>
+            <div class="flex flex-wrap gap-2">
+              <UiButton icon="download" :disabled="!svg" :loading="busy === 'banner'" @click="downloadBanner">Banner design (PNG)</UiButton>
+              <UiButton variant="secondary" icon="download" :disabled="!svg" @click="downloadSvg">QR only (SVG, any size)</UiButton>
+              <UiButton variant="secondary" icon="download" :disabled="!svg" :loading="busy === 'big'" @click="downloadPng(6000, 'big')">QR only (PNG 6000 px)</UiButton>
+            </div>
+            <p class="text-sm font-semibold text-ink">For paper</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <UiButton icon="printer" variant="secondary" :disabled="!svg" @click="printPoster">Print poster (A4)</UiButton>
+            <UiButton variant="secondary" icon="download" :disabled="!svg" :loading="busy === 'small'" @click="downloadPng(1200, 'small')">QR only (PNG 1200 px)</UiButton>
             <a :href="form.url" target="_blank" rel="noopener" class="inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-medium text-primary-600 hover:bg-primary-50" :class="urlError ? 'pointer-events-none opacity-50' : ''">
               <AppIcon name="external" :size="16" /> Test the link
             </a>
           </div>
           <ul class="space-y-1.5 rounded-lg bg-canvas p-3 text-sm text-ink-soft">
-            <li><b class="font-medium text-ink">PNG</b>: for posters, flyers and social media.</li>
-            <li><b class="font-medium text-ink">SVG</b>: stays sharp at any size; give it to the printer for big banners.</li>
-            <li>Print it at least <b class="font-medium text-ink">5 cm</b> wide, and test it with a phone before putting it up.</li>
+            <li><b class="font-medium text-ink">Built for outdoors:</b> high error correction, so it still scans when up to 30% is dirty, faded or folded. Pure black on white with the standard white border.</li>
+            <li><b class="font-medium text-ink">Size by distance:</b> the QR code should be at least <b class="font-medium text-ink">1/10 of the scanning distance</b>. Read from 3 m away → at least 30 cm wide; from 5 m → 50 cm.</li>
+            <li><b class="font-medium text-ink">Banner design (PNG)</b>: the whole layout, 3600 × 5400 px (2 × 3 ft at 150 dpi). The printer can enlarge it for a bigger tarp.</li>
+            <li><b class="font-medium text-ink">QR only (SVG)</b>: give this to the printer if they make their own layout. It stays sharp at any size.</li>
+            <li>Ask for <b class="font-medium text-ink">matte</b> tarpaulin if possible (glossy reflects sunlight), don't let the printer change the colours or crop the white border, and <b class="font-medium text-ink">scan the printed proof</b> before the full run.</li>
           </ul>
           <button type="button" class="text-sm font-medium text-ink-muted hover:text-ink" @click="reset">Reset to default</button>
         </div>
